@@ -44,13 +44,16 @@ unsigned short Peer::get_port() const {
 }
 
 void Peer::read_message() {
+    std::cout << "Executed read message" << std::endl;
     auto self(shared_from_this());
     boost::asio::async_read(ssl_socket_,
         boost::asio::buffer(&message_length_, sizeof(uint32_t)),
         [this, self](boost::system::error_code ec, std::size_t /*length*/)
         {
+            std::cout << "EC IS: " << ec.message() << std::endl;
             if (!ec) {
                 message_length_ = boost::endian::big_to_native(message_length_);
+                std::cout << "Reading message of length: " << message_length_ << std::endl << std::flush;
                 read_buffer_.resize(message_length_);
                 boost::asio::async_read(ssl_socket_,
                     boost::asio::buffer(read_buffer_),
@@ -58,21 +61,19 @@ void Peer::read_message() {
                     {
                         if (!ec) {
                             std::string message(read_buffer_.begin(), read_buffer_.end());
+                            std::cout << "Successfully read message: " << message << std::endl << std::flush;
                             handle_message(message);
                         } else {
-                            std::cerr << "Error reading message body: " << ec.message() << std::endl;
+                            std::cerr << "Error reading message body: " << ec.message() << std::endl << std::flush;
                         }
-                        // Continue reading messages regardless of error
                         read_message();
                     });
             } else {
-                std::cerr << "Error reading message length: " << ec.message() << std::endl;
+                std::cerr << "Error reading message length: " << ec.message() << std::endl << std::flush;
                 if (ec == boost::asio::error::eof || 
                     ec == boost::asio::error::connection_reset) {
-                    // Connection closed or reset, handle disconnection
                     handle_error(ec);
                 } else {
-                    // For other errors, try to continue reading
                     read_message();
                 }
             }
@@ -87,10 +88,15 @@ void Peer::write_message(const std::string& message) {
     buffers.push_back(boost::asio::buffer(message));
 
     boost::asio::async_write(ssl_socket_, buffers,
-        [this, self](const boost::system::error_code &ec, std::size_t /*length*/)
+        [this, self, message](const boost::system::error_code &ec, std::size_t /*length*/)
         {
             if (ec) {
+                std::cerr << "Error writing message to " << get_ip() << ":" << get_port() 
+                          << ". Error: " << ec.message() << std::endl << std::flush;
                 handle_error(ec);
+            } else {
+                std::cout << "Successfully wrote message to " << get_ip() << ":" << get_port() 
+                          << ": " << message << std::endl << std::flush;
             }
         });
 }

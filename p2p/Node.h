@@ -15,6 +15,7 @@ public:
     void start();
     void connect_to_peer(const std::string& ip, unsigned short port);
     void handle_message(const std::shared_ptr<Peer>& sender, const std::string& message);
+    void send_messages_to_peers();
 
 private:
     void accept_connection();
@@ -24,6 +25,7 @@ private:
     void request_known_peers(const std::shared_ptr<Peer>& peer);
     void send_known_peers(const std::shared_ptr<Peer>& requesting_peer);
 
+    unsigned short listening_port_;
     boost::asio::io_context& io_context_;
     boost::asio::ip::tcp::acceptor acceptor_;
     boost::asio::ssl::context ssl_context_;

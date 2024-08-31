@@ -11,7 +11,8 @@
 class Node;
 class Peer : public std::enable_shared_from_this<Peer> {
 public:
-    Peer(boost::asio::ip::tcp::socket socket, boost::asio::ssl::context& ssl_context);
+    // Peer(boost::asio::ip::tcp::socket socket, boost::asio::ssl::context& ssl_context);
+    Peer(boost::asio::ip::tcp::socket socket);
     void start();
     void disconnect();
     std::string get_ip() const;
@@ -30,12 +31,13 @@ private:
     void handle_message(const std::string& message);
     void handle_error(const boost::system::error_code& error);
 
-    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
+    // boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
     std::string ip_;
     unsigned short port_;
     std::vector<char> read_buffer_;
     uint32_t message_length_;
     std::weak_ptr<Node> node_;  // Add this member variable
+    boost::asio::ip::tcp::socket socket_;
 };
 
 // Add hash function for Peer

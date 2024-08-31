@@ -4,30 +4,30 @@
 Node::Node(boost::asio::io_context& io_context, unsigned short port)
     : io_context_(io_context),
       acceptor_(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)),
-      ssl_context_(boost::asio::ssl::context::sslv23),
+      // ssl_context_(boost::asio::ssl::context::sslv23),
       listening_port_(port) {
-    init_ssl_context();
+    // init_ssl_context();
 }
 
-void Node::init_ssl_context() {
-    try {
-        ssl_context_.set_options(
-            boost::asio::ssl::context::default_workarounds
-            | boost::asio::ssl::context::no_sslv2
-            | boost::asio::ssl::context::single_dh_use);
-
-        // Load certificate and private key
-        ssl_context_.use_certificate_chain_file("server.crt");
-        ssl_context_.use_private_key_file("server.key", boost::asio::ssl::context::pem);
-
-        // Optional: Load CA certificate for peer verification
-        // ssl_context_.load_verify_file("ca.pem");
-    } catch (const boost::system::system_error& e) {
-        std::cerr << "SSL context initialization failed: " << e.what() << std::endl;
-        std::cerr << "Make sure 'server.crt' and 'server.key' files are present in the current directory." << std::endl;
-        throw; // Re-throw the exception to stop the program
-    }
-}
+// void Node::init_ssl_context() {
+//     try {
+//         ssl_context_.set_options(
+//             boost::asio::ssl::context::default_workarounds
+//             | boost::asio::ssl::context::no_sslv2
+//             | boost::asio::ssl::context::single_dh_use);
+//
+//         // Load certificate and private key
+//         ssl_context_.use_certificate_chain_file("server.crt");
+//         ssl_context_.use_private_key_file("server.key", boost::asio::ssl::context::pem);
+//
+//         // Optional: Load CA certificate for peer verification
+//         // ssl_context_.load_verify_file("ca.pem");
+//     } catch (const boost::system::system_error& e) {
+//         std::cerr << "SSL context initialization failed: " << e.what() << std::endl;
+//         std::cerr << "Make sure 'server.crt' and 'server.key' files are present in the current directory." << std::endl;
+//         throw; // Re-throw the exception to stop the program
+//     }
+// }
 
 void Node::start() {
     accept_connection();
@@ -38,7 +38,8 @@ void Node::accept_connection() {
         [this, self = shared_from_this()](boost::system::error_code ec, boost::asio::ip::tcp::socket socket) {
             if (!ec) {
                 std::cout << "New connection from: " << socket.remote_endpoint() << std::endl;
-                auto peer = std::make_shared<Peer>(std::move(socket), ssl_context_);
+                // auto peer = std::make_shared<Peer>(std::move(socket), ssl_context_);
+                auto peer = std::make_shared<Peer>(std::move(socket));
                 peer->set_node(self);
                 peers_.insert(peer);
                 peer->start();
@@ -68,7 +69,8 @@ void Node::connect_to_peer(const std::string& ip, unsigned short port) {
             std::cout << "Successfully connected to peer: " << ip << ":" << port << std::endl << std::flush;
             std::cout << "Connected to peer: " << ip << ":" << port << std::endl;
 
-            auto peer = std::make_shared<Peer>(std::move(*socket), ssl_context_);
+            // auto peer = std::make_shared<Peer>(std::move(*socket), ssl_context_);
+            auto peer = std::make_shared<Peer>(std::move(*socket));
             peer->set_node(self);
             peers_.insert(peer);
             connected_peers_.insert(peer_id);

@@ -51,7 +51,32 @@ void Node::accept_connection() {
 }
 
 void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
-    // Implementation to broadcast new peer to all connected peers
+    // Create a JSON object with the new peer's information
+    nlohmann::json peer_info = {
+        {"type", "new_peer"},
+        {"ip", new_peer->get_ip()},
+        {"port", new_peer->get_port()}
+    };
+
+    std::string message = peer_info.dump();
+
+    // Iterate through all existing peers (except the new one) and send the message
+    for (const auto& peer : peers_) {
+        if (peer != new_peer) {
+            try {
+                peer->write_message(message);
+            } catch (const std::exception& e) {
+                std::cerr << "Error broadcasting new peer to "
+                          << peer->get_ip() << ":" << peer->get_port()
+                          << ". Error: " << e.what() << std::endl;
+                // Consider handling disconnected peers here
+            }
+        }
+    }
+
+    std::cout << "Broadcasted new peer " << new_peer->get_ip() << ":"
+              << new_peer->get_port() << " to " << peers_.size() - 1
+              << " existing peers." << std::endl;
 }
 
 void Node::broadcast_peer_disconnection(const std::shared_ptr<Peer>& disconnected_peer) {

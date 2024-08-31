@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_set>
 #include <memory>
+#include <nlohmann/json.hpp>
 #include "Peer.h"
 
 class Node {

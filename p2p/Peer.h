@@ -1,17 +1,19 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <openssl/ssl.h>
+#include <boost/asio/ssl.hpp>
 #include <string>
-#include <functional>
+#include <vector>
+#include <memory>
 
-class Peer {
+class Peer : public std::enable_shared_from_this<Peer> {
 public:
-    Peer(boost::asio::ip::tcp::socket socket);
+    Peer(boost::asio::ip::tcp::socket socket, boost::asio::ssl::context& ssl_context);
     void start();
     void disconnect();
     std::string get_ip() const;
     unsigned short get_port() const;
+    void write_message(const std::string& message);
 
     // Add equality operator
     bool operator==(const Peer& other) const {
@@ -19,13 +21,16 @@ public:
     }
 
 private:
+    void do_handshake();
     void read_message();
-    void write_message(const std::string& message);
+    void handle_message(const std::string& message);
+    void handle_error(const boost::system::error_code& error);
 
-    boost::asio::ip::tcp::socket socket_;
-    SSL* ssl_;
+    boost::asio::ssl::stream<boost::asio::ip::tcp::socket> ssl_socket_;
     std::string ip_;
     unsigned short port_;
+    std::vector<char> read_buffer_;
+    uint32_t message_length_;
 };
 
 // Add hash function for Peer

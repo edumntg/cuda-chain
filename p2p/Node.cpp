@@ -9,17 +9,23 @@ Node::Node(boost::asio::io_context& io_context, unsigned short port)
 }
 
 void Node::init_ssl_context() {
-    ssl_context_.set_options(
-        boost::asio::ssl::context::default_workarounds
-        | boost::asio::ssl::context::no_sslv2
-        | boost::asio::ssl::context::single_dh_use);
+    try {
+        ssl_context_.set_options(
+            boost::asio::ssl::context::default_workarounds
+            | boost::asio::ssl::context::no_sslv2
+            | boost::asio::ssl::context::single_dh_use);
 
-    // Load certificate and private key
-    ssl_context_.use_certificate_chain_file("server.crt");
-    ssl_context_.use_private_key_file("server.key", boost::asio::ssl::context::pem);
+        // Load certificate and private key
+        ssl_context_.use_certificate_chain_file("server.crt");
+        ssl_context_.use_private_key_file("server.key", boost::asio::ssl::context::pem);
 
-    // Optional: Load CA certificate for peer verification
-    // ssl_context_.load_verify_file("ca.pem");
+        // Optional: Load CA certificate for peer verification
+        // ssl_context_.load_verify_file("ca.pem");
+    } catch (const boost::system::system_error& e) {
+        std::cerr << "SSL context initialization failed: " << e.what() << std::endl;
+        std::cerr << "Make sure 'server.crt' and 'server.key' files are present in the current directory." << std::endl;
+        throw; // Re-throw the exception to stop the program
+    }
 }
 
 void Node::start() {

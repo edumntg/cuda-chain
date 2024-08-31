@@ -1,12 +1,12 @@
 #pragma once
 
 #include <boost/asio.hpp>
-#include <openssl/ssl.h>
+#include <boost/asio/ssl.hpp>
 #include <string>
 #include <unordered_set>
 #include <memory>
-#include <nlohmann/json.hpp>
 #include "Peer.h"
+#include <nlohmann/json.hpp>
 
 class Node {
 public:
@@ -16,11 +16,12 @@ public:
 
 private:
     void accept_connection();
-    void handle_new_connection(const boost::system::error_code& error);
     void broadcast_new_peer(const std::shared_ptr<Peer>& new_peer);
     void broadcast_peer_disconnection(const std::shared_ptr<Peer>& disconnected_peer);
+    void init_ssl_context();
 
     boost::asio::io_context& io_context_;
     boost::asio::ip::tcp::acceptor acceptor_;
+    boost::asio::ssl::context ssl_context_;
     std::unordered_set<std::shared_ptr<Peer>> peers_;
 };

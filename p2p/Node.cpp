@@ -3,7 +3,23 @@
 
 Node::Node(boost::asio::io_context& io_context, unsigned short port)
     : io_context_(io_context),
-      acceptor_(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)) {
+      acceptor_(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)),
+      ssl_context_(boost::asio::ssl::context::sslv23) {
+    init_ssl_context();
+}
+
+void Node::init_ssl_context() {
+    ssl_context_.set_options(
+        boost::asio::ssl::context::default_workarounds
+        | boost::asio::ssl::context::no_sslv2
+        | boost::asio::ssl::context::single_dh_use);
+
+    // Load certificate and private key
+    ssl_context_.use_certificate_chain_file("server.crt");
+    ssl_context_.use_private_key_file("server.key", boost::asio::ssl::context::pem);
+
+    // Optional: Load CA certificate for peer verification
+    // ssl_context_.load_verify_file("ca.pem");
 }
 
 void Node::start() {
@@ -20,15 +36,11 @@ void Node::connect_to_peer(const std::string& ip, unsigned short port) {
         if (!ec) {
             std::cout << "Connected to peer: " << ip << ":" << port << std::endl;
 
-            auto peer = std::make_shared<Peer>(std::move(*socket));
+            auto peer = std::make_shared<Peer>(std::move(*socket), ssl_context_);
             peers_.insert(peer);
             peer->start();
 
-            // Broadcast the new peer to existing peers
             broadcast_new_peer(peer);
-
-            // You might want to send your own peer information to the new peer here
-            // peer->write_message("Your peer info");
         } else {
             std::cerr << "Failed to connect to peer " << ip << ":" << port
                       << ". Error: " << ec.message() << std::endl;
@@ -41,7 +53,7 @@ void Node::accept_connection() {
         [this](boost::system::error_code ec, boost::asio::ip::tcp::socket socket) {
             if (!ec) {
                 std::cout << "New connection from: " << socket.remote_endpoint() << std::endl;
-                auto peer = std::make_shared<Peer>(std::move(socket));
+                auto peer = std::make_shared<Peer>(std::move(socket), ssl_context_);
                 peers_.insert(peer);
                 peer->start();
                 broadcast_new_peer(peer);
@@ -51,7 +63,6 @@ void Node::accept_connection() {
 }
 
 void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
-    // Create a JSON object with the new peer's information
     nlohmann::json peer_info = {
         {"type", "new_peer"},
         {"ip", new_peer->get_ip()},
@@ -60,7 +71,6 @@ void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
 
     std::string message = peer_info.dump();
 
-    // Iterate through all existing peers (except the new one) and send the message
     for (const auto& peer : peers_) {
         if (peer != new_peer) {
             try {
@@ -69,7 +79,6 @@ void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
                 std::cerr << "Error broadcasting new peer to "
                           << peer->get_ip() << ":" << peer->get_port()
                           << ". Error: " << e.what() << std::endl;
-                // Consider handling disconnected peers here
             }
         }
     }

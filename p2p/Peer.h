@@ -5,7 +5,10 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <nlohmann/json.hpp>
+#include "Node.h"
 
+class Node;
 class Peer : public std::enable_shared_from_this<Peer> {
 public:
     Peer(boost::asio::ip::tcp::socket socket, boost::asio::ssl::context& ssl_context);
@@ -14,6 +17,7 @@ public:
     std::string get_ip() const;
     unsigned short get_port() const;
     void write_message(const std::string& message);
+    void set_node(std::weak_ptr<Node> node);  // Add this method
 
     // Add equality operator
     bool operator==(const Peer& other) const {
@@ -31,6 +35,7 @@ private:
     unsigned short port_;
     std::vector<char> read_buffer_;
     uint32_t message_length_;
+    std::weak_ptr<Node> node_;  // Add this member variable
 };
 
 // Add hash function for Peer

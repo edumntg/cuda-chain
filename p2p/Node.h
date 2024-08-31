@@ -8,7 +8,8 @@
 #include "Peer.h"
 #include <nlohmann/json.hpp>
 
-class Node {
+class Peer;
+class Node : public std::enable_shared_from_this<Node>{
 public:
     Node(boost::asio::io_context& io_context, unsigned short port);
     void start();
@@ -24,4 +25,6 @@ private:
     boost::asio::ip::tcp::acceptor acceptor_;
     boost::asio::ssl::context ssl_context_;
     std::unordered_set<std::shared_ptr<Peer>> peers_;
+    std::unordered_set<std::string> connected_peers_;  // To keep track of connected peers
+
 };

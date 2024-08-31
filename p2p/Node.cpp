@@ -32,40 +32,51 @@ void Node::start() {
     accept_connection();
 }
 
+void Node::accept_connection() {
+    acceptor_.async_accept(
+        [this, self = shared_from_this()](boost::system::error_code ec, boost::asio::ip::tcp::socket socket) {
+            if (!ec) {
+                std::cout << "New connection from: " << socket.remote_endpoint() << std::endl;
+                auto peer = std::make_shared<Peer>(std::move(socket), ssl_context_);
+                peer->set_node(self);
+                peers_.insert(peer);
+                peer->start();
+                broadcast_new_peer(peer);
+            }
+            accept_connection();  // Continue accepting connections
+        });
+}
+
 void Node::connect_to_peer(const std::string& ip, unsigned short port) {
+    std::string peer_id = ip + ":" + std::to_string(port);
+
+    // Check if we're already connected to this peer
+    if (connected_peers_.find(peer_id) != connected_peers_.end()) {
+        std::cout << "Already connected to peer: " << peer_id << std::endl;
+        return;
+    }
+
     auto endpoint = boost::asio::ip::tcp::endpoint(
         boost::asio::ip::address::from_string(ip), port);
 
     auto socket = std::make_shared<boost::asio::ip::tcp::socket>(io_context_);
 
-    socket->async_connect(endpoint, [this, socket, ip, port](const boost::system::error_code& ec) {
+    socket->async_connect(endpoint, [this, self = shared_from_this(), socket, ip, port, peer_id](const boost::system::error_code& ec) {
         if (!ec) {
             std::cout << "Connected to peer: " << ip << ":" << port << std::endl;
 
             auto peer = std::make_shared<Peer>(std::move(*socket), ssl_context_);
+            peer->set_node(self);
             peers_.insert(peer);
+            connected_peers_.insert(peer_id);
             peer->start();
 
-            broadcast_new_peer(peer);
+            // Don't broadcast new peer here, as we're connecting to an existing peer
         } else {
             std::cerr << "Failed to connect to peer " << ip << ":" << port
                       << ". Error: " << ec.message() << std::endl;
         }
     });
-}
-
-void Node::accept_connection() {
-    acceptor_.async_accept(
-        [this](boost::system::error_code ec, boost::asio::ip::tcp::socket socket) {
-            if (!ec) {
-                std::cout << "New connection from: " << socket.remote_endpoint() << std::endl;
-                auto peer = std::make_shared<Peer>(std::move(socket), ssl_context_);
-                peers_.insert(peer);
-                peer->start();
-                broadcast_new_peer(peer);
-            }
-            accept_connection();
-        });
 }
 
 void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
@@ -81,6 +92,9 @@ void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
         if (peer != new_peer) {
             try {
                 peer->write_message(message);
+                std::cout << "Broadcasted new peer " << new_peer->get_ip() << ":"
+                  << new_peer->get_port() << " to " << peers_.size() - 1
+                  << " existing peers." << std::endl;
             } catch (const std::exception& e) {
                 std::cerr << "Error broadcasting new peer to "
                           << peer->get_ip() << ":" << peer->get_port()
@@ -88,10 +102,6 @@ void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
             }
         }
     }
-
-    std::cout << "Broadcasted new peer " << new_peer->get_ip() << ":"
-              << new_peer->get_port() << " to " << peers_.size() - 1
-              << " existing peers." << std::endl;
 }
 
 void Node::broadcast_peer_disconnection(const std::shared_ptr<Peer>& disconnected_peer) {

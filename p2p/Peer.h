@@ -17,7 +17,7 @@ public:
     std::string get_ip() const;
     unsigned short get_port() const;
     void write_message(const std::string& message);
-    void set_node(std::weak_ptr<Node> node);  // Add this method
+    void set_node(const std::weak_ptr<Node> &node);  // Add this method
 
     // Add equality operator
     bool operator==(const Peer& other) const {
@@ -42,7 +42,7 @@ private:
 namespace std {
     template <>
     struct hash<Peer> {
-        std::size_t operator()(const Peer& p) const {
+        std::size_t operator()(const Peer& p) const noexcept {
             return std::hash<std::string>()(p.get_ip()) ^ std::hash<unsigned short>()(p.get_port());
         }
     };

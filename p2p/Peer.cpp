@@ -6,7 +6,7 @@
 
 Peer::Peer(boost::asio::ip::tcp::socket socket, boost::asio::ssl::context& ssl_context)
     : ssl_socket_(std::move(socket), ssl_context),
-      read_buffer_(1024) {
+      read_buffer_(1024), message_length_(0) {
     ip_ = ssl_socket_.lowest_layer().remote_endpoint().address().to_string();
     port_ = ssl_socket_.lowest_layer().remote_endpoint().port();
 }
@@ -59,13 +59,22 @@ void Peer::read_message() {
                         if (!ec) {
                             std::string message(read_buffer_.begin(), read_buffer_.end());
                             handle_message(message);
-                            read_message();  // Continue reading
                         } else {
-                            handle_error(ec);
+                            std::cerr << "Error reading message body: " << ec.message() << std::endl;
                         }
+                        // Continue reading messages regardless of error
+                        read_message();
                     });
             } else {
-                handle_error(ec);
+                std::cerr << "Error reading message length: " << ec.message() << std::endl;
+                if (ec == boost::asio::error::eof || 
+                    ec == boost::asio::error::connection_reset) {
+                    // Connection closed or reset, handle disconnection
+                    handle_error(ec);
+                } else {
+                    // For other errors, try to continue reading
+                    read_message();
+                }
             }
         });
 }
@@ -74,11 +83,11 @@ void Peer::write_message(const std::string& message) {
     auto self(shared_from_this());
     uint32_t length = boost::endian::native_to_big(static_cast<uint32_t>(message.size()));
     std::vector<boost::asio::const_buffer> buffers;
-    buffers.push_back(boost::asio::buffer(&length, sizeof(uint32_t)));
+    buffers.emplace_back(boost::asio::buffer(&length, sizeof(uint32_t)));
     buffers.push_back(boost::asio::buffer(message));
 
     boost::asio::async_write(ssl_socket_, buffers,
-        [this, self](boost::system::error_code ec, std::size_t /*length*/)
+        [this, self](const boost::system::error_code &ec, std::size_t /*length*/)
         {
             if (ec) {
                 handle_error(ec);
@@ -86,28 +95,15 @@ void Peer::write_message(const std::string& message) {
         });
 }
 
-void Peer::set_node(std::weak_ptr<Node> node) {
+void Peer::set_node(const std::weak_ptr<Node> &node) {
     node_ = node;
 }
 
 void Peer::handle_message(const std::string& message) {
     std::cout << "Received message from " << get_ip() << ":" << get_port() << ": " << message << std::endl;
 
-    try {
-        auto json = nlohmann::json::parse(message);
-        if (json["type"] == "new_peer") {
-            std::string ip = json["ip"];
-            unsigned short port = json["port"];
-
-            // Notify the Node to connect to the new peer
-            if (auto node = node_.lock()) {
-                node->connect_to_peer(ip, port);
-            }
-        } else if (json["type"] == "peer_disconnected") {
-            // Handle peer disconnection if needed
-        }
-    } catch (const std::exception& e) {
-        std::cerr << "Error parsing message: " << e.what() << std::endl;
+    if (const auto node = node_.lock()) {
+        node->handle_message(shared_from_this(), message);
     }
 }
 

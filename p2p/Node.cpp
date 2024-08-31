@@ -71,7 +71,11 @@ void Node::connect_to_peer(const std::string& ip, unsigned short port) {
             connected_peers_.insert(peer_id);
             peer->start();
 
-            // Don't broadcast new peer here, as we're connecting to an existing peer
+            // Broadcast this new connection to all other peers
+            broadcast_new_peer(peer);
+
+            // Request the peer's known peers
+            request_known_peers(peer);
         } else {
             std::cerr << "Failed to connect to peer " << ip << ":" << port
                       << ". Error: " << ec.message() << std::endl;
@@ -93,14 +97,62 @@ void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
             try {
                 peer->write_message(message);
                 std::cout << "Broadcasted new peer " << new_peer->get_ip() << ":"
-                  << new_peer->get_port() << " to " << peers_.size() - 1
-                  << " existing peers." << std::endl;
+                  << new_peer->get_port() << " to " << peer->get_ip() << ":"
+                  << peer->get_port() << std::endl;
             } catch (const std::exception& e) {
                 std::cerr << "Error broadcasting new peer to "
                           << peer->get_ip() << ":" << peer->get_port()
                           << ". Error: " << e.what() << std::endl;
             }
         }
+    }
+}
+
+void Node::request_known_peers(const std::shared_ptr<Peer>& peer) {
+    nlohmann::json request = {
+        {"type", "request_known_peers"}
+    };
+
+    std::string message = request.dump();
+    peer->write_message(message);
+}
+
+void Node::send_known_peers(const std::shared_ptr<Peer>& requesting_peer) {
+    nlohmann::json known_peers = {
+        {"type", "known_peers"},
+        {"peers", nlohmann::json::array()}
+    };
+
+    for (const auto& peer : peers_) {
+        if (peer != requesting_peer) {
+            known_peers["peers"].push_back({
+                {"ip", peer->get_ip()},
+                {"port", peer->get_port()}
+            });
+        }
+    }
+
+    std::string message = known_peers.dump();
+    requesting_peer->write_message(message);
+}
+
+// Add this method to handle incoming messages
+void Node::handle_message(const std::shared_ptr<Peer>& sender, const std::string& message) {
+    try {
+        auto json = nlohmann::json::parse(message);
+        if (json["type"] == "new_peer") {
+            const std::string ip = json["ip"];
+            const unsigned short port = json["port"];
+            connect_to_peer(ip, port);
+        } else if (json["type"] == "request_known_peers") {
+            send_known_peers(sender);
+        } else if (json["type"] == "known_peers") {
+            for (const auto& peer : json["peers"]) {
+                connect_to_peer(peer["ip"], peer["port"]);
+            }
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "Error parsing message: " << e.what() << std::endl;
     }
 }
 

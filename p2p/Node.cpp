@@ -95,5 +95,31 @@ void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
 }
 
 void Node::broadcast_peer_disconnection(const std::shared_ptr<Peer>& disconnected_peer) {
-    // Implementation to broadcast peer disconnection to all connected peers
+    // Create a JSON object with the disconnected peer's information
+    nlohmann::json peer_info = {
+        {"type", "peer_disconnected"},
+        {"ip", disconnected_peer->get_ip()},
+        {"port", disconnected_peer->get_port()}
+    };
+
+    std::string message = peer_info.dump();
+
+    // Remove the disconnected peer from our set of peers
+    peers_.erase(disconnected_peer);
+
+    // Broadcast the disconnection to all remaining peers
+    for (const auto& peer : peers_) {
+        try {
+            peer->write_message(message);
+        } catch (const std::exception& e) {
+            std::cerr << "Error broadcasting peer disconnection to "
+                      << peer->get_ip() << ":" << peer->get_port()
+                      << ". Error: " << e.what() << std::endl;
+            // Consider handling this peer's potential disconnection as well
+        }
+    }
+
+    std::cout << "Broadcasted disconnection of peer " << disconnected_peer->get_ip() << ":"
+              << disconnected_peer->get_port() << " to " << peers_.size()
+              << " remaining peers." << std::endl;
 }

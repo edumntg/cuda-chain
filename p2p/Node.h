@@ -20,11 +20,13 @@ public:
     void send_messages_to_peers();
     void send_matrix_to_peers(double** A, double** B, double** C);
     void wait();
-    void queue_rows(const char* id,
+    void queue_rows(std::string id,
                  int a_size[2], int b_size[2],
                  double** a_rows, double** b_rows);
 
     nlohmann::json Node::pop_job();
+    void send_job_to_peers();
+    void ask_peers_to_take_jobs();
 
 private:
     void accept_connection();

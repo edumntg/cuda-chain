@@ -217,8 +217,27 @@ void Node::send_matrix_to_peers(double **A, double **B, double **C) {
     // First, calculate the number of rows to be computed by self, and then by peers
     int rows_per_peer = rows_A / (peers_.size() + 1);
 
-    // Now add to queue the rows to be computed
+    // Add rows to queue
+    for(int i = 0; i < peers_.size(); i++) {
+        int start_row = i * rows_per_peer;
+        int end_row = (i + 1) * rows_per_peer;
 
+        double** a_rows = new double*[rows_per_peer];
+        double** b_rows = new double*[rows_B];
+
+        for(int j = start_row; j < end_row; j++) {
+            a_rows[j - start_row] = A[j];
+        }
+
+        for(int j = 0; j < rows_B; j++) {
+            b_rows[j] = B[j];
+        }
+
+        queue_rows("job_" + std::to_string(i), new int[2] {rows_per_peer, cols_A}, new int[2] {rows_B, cols_B}, a_rows, b_rows);
+    }
+
+    // After all jobs have been queued, send a message to all peers so they take the jobs
+    ask_peers_to_take_jobs();
 
 }
 
@@ -226,7 +245,7 @@ void Node::wait() {
 
 }
 
-void Node::queue_rows(const char* id,
+void Node::queue_rows(std::string id,
                  int a_size[2], int b_size[2],
                  double** a_rows, double** b_rows) {
     nlohmann::json json_obj;
@@ -250,6 +269,7 @@ void Node::queue_rows(const char* id,
     }
 
     jobs_queue.push(json_obj);
+    logger_.info() << "Queued job with ID: " << id << std::endl;
 }
 
 nlohmann::json Node::pop_job() {
@@ -262,4 +282,28 @@ nlohmann::json Node::pop_job() {
     jobs_queue.pop();
 
     return json_obj;
+}
+
+void Node::ask_peers_to_take_jobs() {
+    logger_.info() << "Asking peers to take queued jobs" << std::endl << std::flush;
+    for (const auto& peer : peers_) {
+        nlohmann::json message = {
+            {"type", "take_job_request"},
+            {"source_ip", acceptor_.local_endpoint().address().to_string()},
+            {"source_port", acceptor_.local_endpoint().port()},
+            {"target_ip", peer->get_ip()},
+            {"target_port", peer->get_port()}
+        };
+
+        std::string message_str = message.dump();
+        try {
+            peer->write_message(message_str);
+            logger_.info() << "Sent message to " << peer->get_ip() << ":" << std::to_string(peer->get_port())
+                      << " from " << acceptor_.local_endpoint().address().to_string()
+                      << ":" << std::to_string(acceptor_.local_endpoint().port()) << std::endl << std::flush;
+        } catch (const std::exception& e) {
+            logger_.error() << "Error sending message to " << peer->get_ip() << ":" << std::to_string(peer->get_port())
+                      << ". Error: " << e.what() << std::endl << std::flush;
+        }
+    }
 }

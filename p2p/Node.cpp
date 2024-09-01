@@ -144,6 +144,48 @@ void Node::handle_message(const std::shared_ptr<Peer>& sender, const std::string
             logger_.info() << "Received periodic message:" << std::endl
                       << "  From port: " << json["source_port"] << std::endl
                       << "  From connection:     " << sender->get_ip() << ":" << std::to_string(sender->get_port()) << std::endl << std::flush;
+        } else if(json["type"] == "take_job_request") {
+            // If we are free, accept the job
+            if(compute_queue.size() < 100) {
+                // Send message to peer accepting the request and requesting for the job data
+                nlohmann::json json = {
+                    {"type", "take_job_response"},
+                    {"answer", "accepted"},
+                    {"source_ip", acceptor_.local_endpoint().address().to_string()},
+                    {"source_port", acceptor_.local_endpoint().port()},
+                    {"target_ip", sender->get_ip()},
+                    {"target_port", sender->get_port()}
+                };
+
+                // send
+                send_direct_message(sender, json);
+                logger_.info() << "Accepted job request from " << sender->get_ip() << ":" << std::to_string(sender->get_port()) << std::endl;
+            }
+        } else if(json["type"] == "take_job_response") {
+            if(json["answer"] == "accepted") {
+                // Peer accepted the job, so send the data
+
+                // Send job data
+                nlohmann::json job = pop_job();
+
+                nlohmann::json json = {
+                    {"type", "job_data"},
+                    {"id", generate_job_id(job)},
+                    {"job", job}
+                };
+
+                send_direct_message(sender, job);
+                logger_.info() << "Send job data to " << sender->get_ip() << ":" << std::to_string(sender->get_port()) << " with id: " << json["id"] << std::endl;
+            }
+        } else if(json["type"] == "job_data") {
+            // We received job data so perform matrix multiplication
+            // Get job data
+            nlohmann::json job = json["job"];
+            std::string id = json["id"];
+            logger_.info() << "Executing job with id: " << id << std::endl;
+            double** result;
+            // Perform matrix multiplication
+            // multiply_rows(job["a_rows"], job["b_rows"], result);
         } else {
             logger_.info() << "Received unknown message type: " << json["type"] << std::endl << std::flush;
         }
@@ -307,3 +349,12 @@ void Node::ask_peers_to_take_jobs() {
         }
     }
 }
+
+void Node::send_direct_message(const std::shared_ptr<Peer> &sender, const nlohmann::json& json) {
+    sender->write_message(json.dump());
+}
+
+std::string Node::generate_job_id(nlohmann::json json) {
+    return hash_str(json.dump());
+}
+

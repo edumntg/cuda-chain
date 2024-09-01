@@ -27,6 +27,8 @@ public:
     nlohmann::json Node::pop_job();
     void send_job_to_peers();
     void ask_peers_to_take_jobs();
+    static void send_direct_message(const std::shared_ptr<Peer>& sender, const nlohmann::json& json);
+    static std::string generate_job_id(nlohmann::json json);
 
 private:
     void accept_connection();
@@ -41,6 +43,7 @@ private:
     std::unordered_set<std::string> connected_peers_;  // To keep track of connected peers
     Logger logger_;
     std::queue<nlohmann::json> jobs_queue;
+    std::queue<nlohmann::json> compute_queue;
 
 
 };

@@ -58,7 +58,7 @@ void send_periodic_messages(Logger logger, std::shared_ptr<Node> node) {
         // Send matrices to peers and wait for results
         node->send_matrix_to_peers(A, B, C);
 
-        node.wait();
+        node->wait();
 
         logger.info() << "Matrix multiplication completed" << std::endl;
 

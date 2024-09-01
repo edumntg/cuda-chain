@@ -1,33 +1,16 @@
 #include "Node.h"
 #include <iostream>
+#include <uuid/uuid.h>
+#include <openssl/sha.h>
+#include "../utils/utils.h"
 
 Node::Node(boost::asio::io_context& io_context, unsigned short port)
     : io_context_(io_context),
       acceptor_(io_context, boost::asio::ip::tcp::endpoint(boost::asio::ip::tcp::v4(), port)),
-      // ssl_context_(boost::asio::ssl::context::sslv23),
-      listening_port_(port) {
-    // init_ssl_context();
-}
+      logger_("Node") {
 
-// void Node::init_ssl_context() {
-//     try {
-//         ssl_context_.set_options(
-//             boost::asio::ssl::context::default_workarounds
-//             | boost::asio::ssl::context::no_sslv2
-//             | boost::asio::ssl::context::single_dh_use);
-//
-//         // Load certificate and private key
-//         ssl_context_.use_certificate_chain_file("server.crt");
-//         ssl_context_.use_private_key_file("server.key", boost::asio::ssl::context::pem);
-//
-//         // Optional: Load CA certificate for peer verification
-//         // ssl_context_.load_verify_file("ca.pem");
-//     } catch (const boost::system::system_error& e) {
-//         std::cerr << "SSL context initialization failed: " << e.what() << std::endl;
-//         std::cerr << "Make sure 'server.crt' and 'server.key' files are present in the current directory." << std::endl;
-//         throw; // Re-throw the exception to stop the program
-//     }
-// }
+    // Init logger
+}
 
 void Node::start() {
     accept_connection();
@@ -37,9 +20,9 @@ void Node::accept_connection() {
     acceptor_.async_accept(
         [this, self = shared_from_this()](boost::system::error_code ec, boost::asio::ip::tcp::socket socket) {
             if (!ec) {
-                std::cout << "New connection from: " << socket.remote_endpoint() << std::endl;
+                logger_.info() << "New connection from: " << socket.remote_endpoint().address().to_string() << ":" << std::to_string(socket.remote_endpoint().port()) << std::endl;
                 // auto peer = std::make_shared<Peer>(std::move(socket), ssl_context_);
-                auto peer = std::make_shared<Peer>(std::move(socket));
+                auto peer = std::make_shared<Peer>(std::move(socket), socket.remote_endpoint().address().to_string(), socket.remote_endpoint().port());
                 peer->set_node(self);
                 peers_.insert(peer);
                 peer->start();
@@ -50,27 +33,27 @@ void Node::accept_connection() {
 }
 
 void Node::connect_to_peer(const std::string& ip, unsigned short port) {
-    std::string peer_id = ip + ":" + std::to_string(port);
-    std::cout << "Peer with ip: " << ip << " and port: " << port << " received ID: " << peer_id << std::endl;
+
+    std::string peer_id = hash_str(ip + ":" + std::to_string(port));
+
+    logger_.info() << "Peer with ip: " << ip << " and port: " << std::to_string(port) << " received ID: " << peer_id << std::endl;
 
     // Check if we're already connected to this peer
     if (connected_peers_.find(peer_id) != connected_peers_.end()) {
-        std::cout << "Already connected to peer: " << peer_id << std::endl;
+        logger_.warning() << "Already connected to peer: " << peer_id << std::endl;
         return;
     }
 
     auto endpoint = boost::asio::ip::tcp::endpoint(
-        boost::asio::ip::address::from_string("127.0.0.1"), port);
+        boost::asio::ip::address::from_string(ip), port);
 
     auto socket = std::make_shared<boost::asio::ip::tcp::socket>(io_context_);
 
     socket->async_connect(endpoint, [this, self = shared_from_this(), socket, ip, port, peer_id](const boost::system::error_code& ec) {
         if (!ec) {
-            std::cout << "Successfully connected to peer: " << ip << ":" << port << std::endl << std::flush;
-            std::cout << "Connected to peer: " << ip << ":" << port << std::endl;
+            logger_.info() << "Successfully connected to peer: " << ip << ":" << std::to_string(port) << " (" << peer_id << ") " << std::endl << std::flush;
 
-            // auto peer = std::make_shared<Peer>(std::move(*socket), ssl_context_);
-            auto peer = std::make_shared<Peer>(std::move(*socket));
+            auto peer = std::make_shared<Peer>(std::move(*socket), ip, port);
             peer->set_node(self);
             peers_.insert(peer);
             connected_peers_.insert(peer_id);
@@ -82,7 +65,7 @@ void Node::connect_to_peer(const std::string& ip, unsigned short port) {
             // Request the peer's known peers
             request_known_peers(peer);
         } else {
-            std::cerr << "Failed to connect to peer " << ip << ":" << port
+            logger_.error() << "Failed to connect to peer " << ip << ":" << std::to_string(port)
                       << ". Error: " << ec.message() << std::endl << std::flush;
         }
     });
@@ -101,12 +84,12 @@ void Node::broadcast_new_peer(const std::shared_ptr<Peer>& new_peer) {
         if (peer != new_peer) {
             try {
                 peer->write_message(message);
-                std::cout << "Broadcasted new peer " << new_peer->get_ip() << ":"
-                  << new_peer->get_port() << " to " << peer->get_ip() << ":"
-                  << peer->get_port() << std::endl;
+                logger_.info() << "Broadcasted new peer " << new_peer->get_ip() << ":"
+                  << std::to_string(new_peer->get_port()) << " to " << peer->get_ip() << ":"
+                  << std::to_string(peer->get_port()) << std::endl;
             } catch (const std::exception& e) {
-                std::cerr << "Error broadcasting new peer to "
-                          << peer->get_ip() << ":" << peer->get_port()
+                logger_.error() << "Error broadcasting new peer to "
+                          << peer->get_ip() << ":" << std::to_string(peer->get_port())
                           << ". Error: " << e.what() << std::endl;
             }
         }
@@ -143,7 +126,7 @@ void Node::send_known_peers(const std::shared_ptr<Peer>& requesting_peer) {
 
 // Add this method to handle incoming messages
 void Node::handle_message(const std::shared_ptr<Peer>& sender, const std::string& message) {
-    std::cout << "Received message at listening port " << listening_port_ << " from " << sender->get_ip() << ":" << sender->get_port()
+    logger_.info() << "Received message from " << sender->get_ip() << ":" << std::to_string(sender->get_port())
               << ": " << message << std::endl << std::flush;
     try {
         auto json = nlohmann::json::parse(message);
@@ -158,12 +141,11 @@ void Node::handle_message(const std::shared_ptr<Peer>& sender, const std::string
                 connect_to_peer(peer["ip"], peer["port"]);
             }
         } else if (json["type"] == "periodic_message") {
-            std::cout << "Received periodic message:" << std::endl
-                      << "  From listening port: " << json["source_port"] << std::endl
-                      << "  From connection:     " << sender->get_ip() << ":" << sender->get_port() << std::endl
-                      << "  To listening port:   " << listening_port_ << std::endl << std::flush;
+            logger_.info() << "Received periodic message:" << std::endl
+                      << "  From port: " << json["source_port"] << std::endl
+                      << "  From connection:     " << sender->get_ip() << ":" << std::to_string(sender->get_port()) << std::endl << std::flush;
         } else {
-            std::cout << "Received unknown message type: " << json["type"] << std::endl << std::flush;
+            logger_.info() << "Received unknown message type: " << json["type"] << std::endl << std::flush;
         }
     } catch (const std::exception& e) {
         std::cerr << "Error parsing message: " << e.what() << std::endl << std::flush;
@@ -195,19 +177,19 @@ void Node::broadcast_peer_disconnection(const std::shared_ptr<Peer>& disconnecte
         }
     }
 
-    std::cout << "Broadcasted disconnection of peer " << disconnected_peer->get_ip() << ":"
-              << disconnected_peer->get_port() << " to " << peers_.size()
+    logger_.info() << "Broadcasted disconnection of peer " << disconnected_peer->get_ip() << ":"
+              << std::to_string(disconnected_peer->get_port()) << " to " << std::to_string(peers_.size())
               << " remaining peers." << std::endl;
 }
 
 // Add this function to Node.cpp
 void Node::send_messages_to_peers() {
-    std::cout << "Attempting to send messages to " << peers_.size() << " peers from listening port " << listening_port_ << "." << std::endl << std::flush;
+    logger_.info() << "Attempting to send messages to " << std::to_string(peers_.size()) << " peers." << std::endl << std::flush;
     for (const auto& peer : peers_) {
         nlohmann::json message = {
             {"type", "periodic_message"},
             {"source_ip", acceptor_.local_endpoint().address().to_string()},
-            {"source_port", listening_port_},
+            {"source_port", acceptor_.local_endpoint().port()},
             {"target_ip", peer->get_ip()},
             {"target_port", peer->get_port()}
         };
@@ -215,11 +197,11 @@ void Node::send_messages_to_peers() {
         std::string message_str = message.dump();
         try {
             peer->write_message(message_str);
-            std::cout << "Sent message from listening port " << listening_port_ << " to " << peer->get_ip() << ":" << peer->get_port()
+            logger_.info() << "Sent message to " << peer->get_ip() << ":" << std::to_string(peer->get_port())
                       << " from " << acceptor_.local_endpoint().address().to_string() 
-                      << ":" << acceptor_.local_endpoint().port() << std::endl << std::flush;
+                      << ":" << std::to_string(acceptor_.local_endpoint().port()) << std::endl << std::flush;
         } catch (const std::exception& e) {
-            std::cerr << "Error sending message to " << peer->get_ip() << ":" << peer->get_port() 
+            logger_.error() << "Error sending message to " << peer->get_ip() << ":" << std::to_string(peer->get_port())
                       << ". Error: " << e.what() << std::endl << std::flush;
         }
     }

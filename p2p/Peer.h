@@ -6,13 +6,14 @@
 #include <vector>
 #include <memory>
 #include <nlohmann/json.hpp>
+#include "../logger/Logger.h"
 #include "Node.h"
 
 class Node;
 class Peer : public std::enable_shared_from_this<Peer> {
 public:
     // Peer(boost::asio::ip::tcp::socket socket, boost::asio::ssl::context& ssl_context);
-    Peer(boost::asio::ip::tcp::socket socket);
+    Peer(boost::asio::ip::tcp::socket socket, std::string ip, unsigned short port);
     void start();
     void disconnect();
     std::string get_ip() const;
@@ -38,6 +39,7 @@ private:
     uint32_t message_length_;
     std::weak_ptr<Node> node_;  // Add this member variable
     boost::asio::ip::tcp::socket socket_;
+    Logger logger_;
 };
 
 // Add hash function for Peer

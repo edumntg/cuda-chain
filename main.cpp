@@ -5,11 +5,64 @@
 #include <thread>
 #include <chrono>
 #include "logger/Logger.h"
+#include <random>
+#include <ctime>
 
-void send_periodic_messages(std::shared_ptr<Node> node) {
+double** initialize_random_matrix(int rows, int columns) {
+    double** matrix = new double*[rows];
+    for (int i = 0; i < rows * columns; i++) {
+        matrix[i] = new double[columns];
+    }
+
+    // Initialize random number generator
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<double> dis(0.0, 1.0);
+
+    // Initialize matrix with random values
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < columns; ++j) {
+            matrix[i][j] = dis(gen);
+        }
+    }
+
+    return matrix;
+}
+
+void deallocate_matrix(double** matrix, int rows) {
+    for (int i = 0; i < rows; i++) {
+        delete[] matrix[i];
+    }
+    delete[] matrix;
+}
+
+void send_periodic_messages(Logger logger, std::shared_ptr<Node> node) {
+    // We perform a matrix multiplication each 3 seconds
     while (true) {
         std::this_thread::sleep_for(std::chrono::seconds(3));
-        node->send_messages_to_peers();
+
+        // Initialize matrices A and B
+
+        // Initialize matrix A (100x100)
+        double** A = initialize_random_matrix(100, 100);
+
+        // Initialize matrix B (100x50)
+        double** B = initialize_random_matrix(100, 50);
+
+        // Create result matrix (100x50)
+        double** C = new double*[sizeof(A)];
+        for (int i = 0; i < sizeof(A); i++) {
+            C[i] = new double[sizeof(A[0])];
+        }
+
+        // Send matrices to peers and wait for results
+        node->send_matrix_to_peers(A, B, C);
+
+        node.wait();
+
+        logger.info() << "Matrix multiplication completed" << std::endl;
+
+        // node->send_messages_to_peers();
     }
 }
 
@@ -39,12 +92,12 @@ int main(int argc, char* argv[]) {
     }
 
     // Start a new thread for sending periodic messages
-    // std::thread message_thread(send_periodic_messages, node);
+    std::thread message_thread(send_periodic_messages, node);
 
     io_context.run();
 
     // Join the message thread (this won't be reached in normal operation)
-    // message_thread.join();
+    message_thread.join();
 
     return 0;
 }

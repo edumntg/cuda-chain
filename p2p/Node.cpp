@@ -206,3 +206,60 @@ void Node::send_messages_to_peers() {
         }
     }
 }
+
+void Node::send_matrix_to_peers(double **A, double **B, double **C) {
+    // Get num of rows and columns
+    int rows_A = sizeof(A);
+    int cols_A = sizeof(A[0]);
+    int rows_B = sizeof(B);
+    int cols_B = sizeof(B[0]);
+
+    // First, calculate the number of rows to be computed by self, and then by peers
+    int rows_per_peer = rows_A / (peers_.size() + 1);
+
+    // Now add to queue the rows to be computed
+
+
+}
+
+void Node::wait() {
+
+}
+
+void Node::queue_rows(const char* id,
+                 int a_size[2], int b_size[2],
+                 double** a_rows, double** b_rows) {
+    nlohmann::json json_obj;
+    json_obj["id"] = id;
+    json_obj["a_size"][0] = a_size[0];
+    json_obj["a_size"][1] = a_size[1];
+    json_obj["b_size"][0] = b_size[0];
+    json_obj["b_size"][1] = b_size[1];
+
+    // Convert 2D arrays to JSON arrays
+    for (int i = 0; i < a_size[0]; ++i) {
+        for (int j = 0; j < a_size[1]; ++j) {
+            json_obj["a_rows"][i][j] = a_rows[i][j];
+        }
+    }
+
+    for (int i = 0; i < b_size[0]; ++i) {
+        for (int j = 0; j < b_size[1]; ++j) {
+            json_obj["b_rows"][i][j] = b_rows[i][j];
+        }
+    }
+
+    jobs_queue.push(json_obj);
+}
+
+nlohmann::json Node::pop_job() {
+
+    if(!jobs_queue.empty()) {
+        return nlohmann::json("{}");
+    }
+
+    nlohmann::json json_obj = jobs_queue.front();
+    jobs_queue.pop();
+
+    return json_obj;
+}

@@ -9,7 +9,7 @@
 #include <ctime>
 
 double** initialize_random_matrix(int rows, int columns) {
-    double** matrix = new double*[rows];
+    auto** matrix = new double*[rows];
     for (int i = 0; i < rows * columns; i++) {
         matrix[i] = new double[columns];
     }
@@ -29,7 +29,8 @@ double** initialize_random_matrix(int rows, int columns) {
     return matrix;
 }
 
-void deallocate_matrix(double** matrix, int rows) {
+void deallocate_matrix(double** matrix) {
+    int rows = sizeof(matrix);
     for (int i = 0; i < rows; i++) {
         delete[] matrix[i];
     }
@@ -39,30 +40,37 @@ void deallocate_matrix(double** matrix, int rows) {
 void send_periodic_messages(Logger logger, std::shared_ptr<Node> node) {
     // We perform a matrix multiplication each 3 seconds
     while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(3));
+        std::this_thread::sleep_for(std::chrono::seconds(10));
 
-        // Initialize matrices A and B
+        if(!node->get_peers().empty()) {
+            // Initialize matrices A and B
 
-        // Initialize matrix A (100x100)
-        double** A = initialize_random_matrix(100, 100);
+            // Initialize matrix A (100x100)
+            double** A = initialize_random_matrix(100, 100);
 
-        // Initialize matrix B (100x50)
-        double** B = initialize_random_matrix(100, 50);
+            // Initialize matrix B (100x50)
+            double** B = initialize_random_matrix(100, 50);
 
-        // Create result matrix (100x50)
-        double** C = new double*[sizeof(A)];
-        for (int i = 0; i < sizeof(A); i++) {
-            C[i] = new double[sizeof(A[0])];
+            // Create result matrix (100x50)
+            auto** C = new double*[sizeof(A)];
+            for (int i = 0; i < sizeof(A); i++) {
+                C[i] = new double[sizeof(A[0])];
+            }
+
+            // Send matrices to peers and wait for results
+            node->send_matrix_to_peers(A, B, C);
+
+            node->wait();
+
+            logger.info() << "Matrix multiplication completed" << std::endl;
+
+            deallocate_matrix(A);
+            deallocate_matrix(B);
+            deallocate_matrix(C);
+
+
+            // node->send_messages_to_peers();
         }
-
-        // Send matrices to peers and wait for results
-        node->send_matrix_to_peers(A, B, C);
-
-        node->wait();
-
-        logger.info() << "Matrix multiplication completed" << std::endl;
-
-        // node->send_messages_to_peers();
     }
 }
 
@@ -92,7 +100,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Start a new thread for sending periodic messages
-    std::thread message_thread(send_periodic_messages, node);
+    std::thread message_thread(send_periodic_messages, logger_, node);
 
     io_context.run();
 

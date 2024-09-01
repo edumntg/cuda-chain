@@ -24,11 +24,15 @@ public:
                  int a_size[2], int b_size[2],
                  double** a_rows, double** b_rows);
 
-    nlohmann::json Node::pop_job();
+    nlohmann::json pop_job();
     void send_job_to_peers();
     void ask_peers_to_take_jobs();
     static void send_direct_message(const std::shared_ptr<Peer>& sender, const nlohmann::json& json);
     static std::string generate_job_id(nlohmann::json json);
+
+    std::unordered_set<std::shared_ptr<Peer>> get_peers() {
+        return peers_;
+    }
 
 private:
     void accept_connection();

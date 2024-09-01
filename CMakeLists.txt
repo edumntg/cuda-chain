@@ -23,6 +23,7 @@ set(SOURCES
         main.cpp
         p2p/Node.cpp
         p2p/Peer.cpp
+        matrix/Matrix.cpp
 )
 
 # Create the executable

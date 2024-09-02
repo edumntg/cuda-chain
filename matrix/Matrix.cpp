@@ -3,15 +3,49 @@
 //
 
 #include "Matrix.h"
+#include <chrono>
 
-Matrix::Matrix(int rows, int columns) {
+Matrix::Matrix(int rows, int columns): logger_("Matrix") {
     rows_ = rows;
     columns_ = columns;
-    data_ = new double*[rows];
+    data_ = new double *[rows];
     for (int i = 0; i < rows; i++) {
         data_[i] = new double[columns];
     }
 }
+
+Matrix Matrix::from_array(double** array) {
+    int rows = sizeof(array);
+    int columns = sizeof(array[0]);
+    Matrix matrix(rows, columns);
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < columns; j++) {
+            matrix.set(i, j, array[i][j]);
+        }
+    }
+    return matrix;
+}
+
+Matrix Matrix::from_json(nlohmann::json obj) {
+    int rows = obj.size();
+    int cols = obj[0].size();
+
+    // Allocate memory for the 2D array
+    auto** result = new double*[rows];
+    for (int i = 0; i < rows; ++i) {
+        result[i] = new double[cols];
+    }
+
+    // Copy the values into the 2D array
+    for (int i = 0; i < rows; ++i) {
+        for (int j = 0; j < cols; ++j) {
+            result[i][j] = obj[i][j];
+        }
+    }
+
+    return from_array(result);
+}
+
 
 Matrix Matrix::zeros(int rows, int columns) {
     Matrix matrix(rows, columns);
@@ -98,6 +132,7 @@ Matrix Matrix::subtract(Matrix matrix) {
 }
 
 Matrix Matrix::multiply(Matrix matrix) {
+    // const auto start = std::chrono::high_resolution_clock::now();
     Matrix result(rows_, matrix.get_columns());
     for (int i = 0; i < rows_; i++) {
         for (int j = 0; j < matrix.get_columns(); j++) {
@@ -108,6 +143,11 @@ Matrix Matrix::multiply(Matrix matrix) {
             result.set(i, j, sum);
         }
     }
+    // const auto end = std::chrono::high_resolution_clock::now();
+    // const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // logger_.info() << "Multiplication (" << std::to_string(get_rows()) << ", " << std::to_string(get_columns()) << ") x ("
+    //                << std::to_string(matrix.get_rows()) << ", " << std::to_string(matrix.get_columns()) << ") took "
+    //                << std::to_string(elapsed) << " ms" << std::endl;
     return result;
 }
 

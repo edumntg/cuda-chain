@@ -37,8 +37,11 @@ void deallocate_matrix(double** matrix) {
     delete[] matrix;
 }
 
-void send_periodic_messages(Logger logger, std::shared_ptr<Node> node) {
+void send_periodic_messages(Logger logger, std::shared_ptr<Node> node, bool run) {
     // We perform a matrix multiplication each 3 seconds
+    if(!run) {
+        return;
+    }
     while (true) {
         std::this_thread::sleep_for(std::chrono::seconds(10));
 
@@ -92,7 +95,9 @@ int main(int argc, char* argv[]) {
     logger_.info() << "Node started at port " << std::to_string(port) << std::endl;
     node->start();
 
+    bool run = true;
     if (argc == 4) {
+        run = false;
         std::string peer_ip = argv[2];
         unsigned short peer_port = std::stoi(argv[3]);
         logger_.info() << "Connecting to peer " << peer_ip << ":" << std::to_string(peer_port) << std::endl;
@@ -100,7 +105,7 @@ int main(int argc, char* argv[]) {
     }
 
     // Start a new thread for sending periodic messages
-    std::thread message_thread(send_periodic_messages, logger_, node);
+    std::thread message_thread(send_periodic_messages, logger_, node, run);
 
     io_context.run();
 

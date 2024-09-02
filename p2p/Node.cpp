@@ -3,6 +3,7 @@
 #include <uuid/uuid.h>
 #include <openssl/sha.h>
 #include "../utils/utils.h"
+#include "../matrix/Matrix.h"
 
 Node::Node(boost::asio::io_context& io_context, unsigned short port)
     : io_context_(io_context),
@@ -163,18 +164,19 @@ void Node::handle_message(const std::shared_ptr<Peer>& sender, const std::string
             }
         } else if(json["type"] == "take_job_response") {
             if(json["answer"] == "accepted") {
+                logger_.info() << "Peer with ID: " << sender->get_ip() << ":" << std::to_string(sender->get_port()) << " accepted the job" << std::endl;
                 // Peer accepted the job, so send the data
 
                 // Send job data
                 nlohmann::json job = pop_job();
 
-                nlohmann::json json = {
+                nlohmann::json json_data = {
                     {"type", "job_data"},
                     {"id", generate_job_id(job)},
                     {"job", job}
                 };
 
-                send_direct_message(sender, job);
+                send_direct_message(sender, json_data);
                 logger_.info() << "Send job data to " << sender->get_ip() << ":" << std::to_string(sender->get_port()) << " with id: " << json["id"] << std::endl;
             }
         } else if(json["type"] == "job_data") {
@@ -183,7 +185,13 @@ void Node::handle_message(const std::shared_ptr<Peer>& sender, const std::string
             nlohmann::json job = json["job"];
             std::string id = json["id"];
             logger_.info() << "Executing job with id: " << id << std::endl;
-            double** result;
+
+            Matrix A = Matrix::from_json(job["a_rows"]);
+            Matrix B = Matrix::from_json(job["b_rows"]);
+
+            // Perform multiplication
+            Matrix C = A.multiply(B);
+
             // Perform matrix multiplication
             // multiply_rows(job["a_rows"], job["b_rows"], result);
         } else {
@@ -316,7 +324,7 @@ void Node::queue_rows(std::string id,
 
 nlohmann::json Node::pop_job() {
 
-    if(!jobs_queue.empty()) {
+    if(jobs_queue.empty()) {
         return nlohmann::json("{}");
     }
 

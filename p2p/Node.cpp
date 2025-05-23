@@ -257,14 +257,8 @@ void Node::send_messages_to_peers() {
     }
 }
 
-void Node::send_matrix_to_peers(double **A, double **B, double **C) {
-    // Get num of rows and columns
-    int rows_A = sizeof(A);
-    int cols_A = sizeof(A[0]);
-    int rows_B = sizeof(B);
-    int cols_B = sizeof(B[0]);
-
-    // First, calculate the number of rows to be computed by self, and then by peers
+void Node::send_matrix_to_peers(double **A, double **B, double **C, int rows_A, int cols_A, int rows_B, int cols_B) {
+    // Pass dimensions as parameters instead of using sizeof
     int rows_per_peer = rows_A / (peers_.size() + 1);
 
     // Add rows to queue
@@ -292,7 +286,10 @@ void Node::send_matrix_to_peers(double **A, double **B, double **C) {
 }
 
 void Node::wait() {
-
+    // Wait for all jobs to complete
+    while (!jobs_queue.empty() || !compute_queue.empty()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
 }
 
 void Node::queue_rows(std::string id,

@@ -16,6 +16,7 @@ private:
 
 public:
     Matrix(int, int);
+    ~Matrix();  // Add destructor
     static Matrix from_array(double**);
     static Matrix from_json(nlohmann::json);
     Matrix zeros(int, int);

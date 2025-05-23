@@ -10,7 +10,7 @@
 
 double** initialize_random_matrix(int rows, int columns) {
     auto** matrix = new double*[rows];
-    for (int i = 0; i < rows * columns; i++) {
+    for (int i = 0; i < rows; i++) {  // Fix: should be 'rows', not 'rows * columns'
         matrix[i] = new double[columns];
     }
 
@@ -29,13 +29,25 @@ double** initialize_random_matrix(int rows, int columns) {
     return matrix;
 }
 
-void deallocate_matrix(double** matrix) {
-    int rows = sizeof(matrix);
+// Fix deallocate_matrix function
+void deallocate_matrix(double** matrix, int rows) {
     for (int i = 0; i < rows; i++) {
         delete[] matrix[i];
     }
     delete[] matrix;
 }
+
+// Fix matrix C allocation in send_periodic_messages
+// Create result matrix (100x50)
+auto** C = new double*[100];  // Use actual row count
+for (int i = 0; i < 100; i++) {
+    C[i] = new double[50];  // Use actual column count
+}
+
+// Update deallocate calls
+deallocate_matrix(A, 100);
+deallocate_matrix(B, 100);
+deallocate_matrix(C, 100);
 
 void send_periodic_messages(Logger logger, std::shared_ptr<Node> node, bool run) {
     // We perform a matrix multiplication each 3 seconds

@@ -225,3 +225,11 @@ Matrix Matrix::flatten() {
     return result;
 }
 
+// Add destructor implementation
+Matrix::~Matrix() {
+    for (int i = 0; i < rows_; i++) {
+        delete[] data_[i];
+    }
+    delete[] data_;
+}
+

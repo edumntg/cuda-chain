@@ -16,8 +16,8 @@ private:
 
 public:
     Matrix(int, int);
-    ~Matrix();  // Add destructor
-    static Matrix from_array(double**);
+    ~Matrix();  // Already properly implemented
+    static Matrix from_array(double**, int rows, int columns);  // Fixed signature
     static Matrix from_json(nlohmann::json);
     Matrix zeros(int, int);
     Matrix ones(int, int);

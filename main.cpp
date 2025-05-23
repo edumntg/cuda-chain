@@ -10,7 +10,7 @@
 
 double** initialize_random_matrix(int rows, int columns) {
     auto** matrix = new double*[rows];
-    for (int i = 0; i < rows; i++) {  // Fix: should be 'rows', not 'rows * columns'
+    for (int i = 0; i < rows; i++) {  // FIXED: was 'rows * columns'
         matrix[i] = new double[columns];
     }
 
@@ -29,25 +29,13 @@ double** initialize_random_matrix(int rows, int columns) {
     return matrix;
 }
 
-// Fix deallocate_matrix function
+// FIXED: Added rows parameter to properly deallocate
 void deallocate_matrix(double** matrix, int rows) {
     for (int i = 0; i < rows; i++) {
         delete[] matrix[i];
     }
     delete[] matrix;
 }
-
-// Fix matrix C allocation in send_periodic_messages
-// Create result matrix (100x50)
-auto** C = new double*[100];  // Use actual row count
-for (int i = 0; i < 100; i++) {
-    C[i] = new double[50];  // Use actual column count
-}
-
-// Update deallocate calls
-deallocate_matrix(A, 100);
-deallocate_matrix(B, 100);
-deallocate_matrix(C, 100);
 
 void send_periodic_messages(Logger logger, std::shared_ptr<Node> node, bool run) {
     // We perform a matrix multiplication each 3 seconds
@@ -66,10 +54,10 @@ void send_periodic_messages(Logger logger, std::shared_ptr<Node> node, bool run)
             // Initialize matrix B (100x50)
             double** B = initialize_random_matrix(100, 50);
 
-            // Create result matrix (100x50)
-            auto** C = new double*[sizeof(A)];
-            for (int i = 0; i < sizeof(A); i++) {
-                C[i] = new double[sizeof(A[0])];
+            // FIXED: Create result matrix (100x50) with actual dimensions
+            auto** C = new double*[100];  // Use actual row count
+            for (int i = 0; i < 100; i++) {
+                C[i] = new double[50];  // Use actual column count
             }
 
             // Send matrices to peers and wait for results
@@ -79,12 +67,10 @@ void send_periodic_messages(Logger logger, std::shared_ptr<Node> node, bool run)
 
             logger.info() << "Matrix multiplication completed" << std::endl;
 
-            deallocate_matrix(A);
-            deallocate_matrix(B);
-            deallocate_matrix(C);
-
-
-            // node->send_messages_to_peers();
+            // FIXED: Pass row counts to deallocate_matrix
+            deallocate_matrix(A, 100);
+            deallocate_matrix(B, 100);
+            deallocate_matrix(C, 100);
         }
     }
 }

@@ -277,12 +277,18 @@ void Node::send_matrix_to_peers(double **A, double **B, double **C, int rows_A, 
             b_rows[j] = B[j];
         }
 
-        queue_rows("job_" + std::to_string(i), new int[2] {rows_per_peer, cols_A}, new int[2] {rows_B, cols_B}, a_rows, b_rows);
+        // Fix: Use stack arrays instead of dynamic allocation to avoid memory leaks
+        int a_size[2] = {rows_per_peer, cols_A};
+        int b_size[2] = {rows_B, cols_B};
+        queue_rows("job_" + std::to_string(i), a_size, b_size, a_rows, b_rows);
+        
+        // Clean up allocated memory
+        delete[] a_rows;
+        delete[] b_rows;
     }
 
     // After all jobs have been queued, send a message to all peers so they take the jobs
     ask_peers_to_take_jobs();
-
 }
 
 void Node::wait() {

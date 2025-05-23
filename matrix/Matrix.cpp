@@ -14,9 +14,7 @@ Matrix::Matrix(int rows, int columns): logger_("Matrix") {
     }
 }
 
-Matrix Matrix::from_array(double** array) {
-    int rows = sizeof(array);
-    int columns = sizeof(array[0]);
+Matrix Matrix::from_array(double** array, int rows, int columns) {
     Matrix matrix(rows, columns);
     for (int i = 0; i < rows; i++) {
         for (int j = 0; j < columns; j++) {
@@ -43,7 +41,15 @@ Matrix Matrix::from_json(nlohmann::json obj) {
         }
     }
 
-    return from_array(result);
+    Matrix matrix = from_array(result, rows, cols);
+    
+    // Clean up temporary array
+    for (int i = 0; i < rows; ++i) {
+        delete[] result[i];
+    }
+    delete[] result;
+    
+    return matrix;
 }
 
 

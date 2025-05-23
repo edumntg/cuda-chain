@@ -106,3 +106,7 @@ xcuserdata/
 *.gcno
 *.gcda
 *.gcov
+*.crt
+*.key
+.idea/
+cmake-build-debug/

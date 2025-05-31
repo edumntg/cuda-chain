@@ -67,11 +67,11 @@ def configure(ctx, url):
 # Placeholder for future command groups
 from auth_commands import auth_group
 from requester_commands import requester_group
-# from worker_commands import worker_group
+from worker_commands import worker_group
 
 cli.add_command(auth_group)
 cli.add_command(requester_group)
-# cli.add_command(worker_group)
+cli.add_command(worker_group)
 
 if __name__ == '__main__':
     cli()

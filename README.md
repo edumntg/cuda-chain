@@ -105,7 +105,7 @@ This hybrid approach aims to leverage the Central Server for reliable coordinati
 
 ## CLI Usage Examples
 
-This section provides examples for common CPChain CLI commands. Ensure you have logged in using \`cpchain auth login\` before running commands that require authentication.
+This section provides examples for common CPChain CLI commands. Ensure you have logged in using `cpchain auth login` before running commands that require authentication.
 
 ### Configuration
 
@@ -353,7 +353,7 @@ This section explains how to set up and run the CPChain backend server.
     ```
 
 4.  **Environment Variables:**
-    The server requires certain environment variables. Create a \`.env\` file in the \`backend\` directory by copying the example:
+    The server requires certain environment variables. Create a `.env` file in the `backend` directory by copying the example:
     ```bash
     cp .env.example .env
     ```
@@ -368,7 +368,7 @@ This section explains how to set up and run the CPChain backend server.
     # For PostgreSQL (example, if you set it up):
     # SQLALCHEMY_DATABASE_URL=postgresql://youruser:yourpassword@localhost:5432/cpchain_db
     ```
-    **Important:** The \`SECRET_KEY\` is crucial for security (signing JWTs). Make it long, random, and keep it secret.
+    **Important:** The `SECRET_KEY` is crucial for security (signing JWTs). Make it long, random, and keep it secret.
 
 ### Running the Server
 
@@ -378,19 +378,19 @@ Once the setup is complete, you can run the FastAPI server using Uvicorn:
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-*   \`main:app\`: Tells Uvicorn to find the FastAPI application instance named \`app\` in the \`main.py\` file.
-*   \`--reload\`: Enables auto-reloading the server when code changes (useful for development).
-*   \`--host 0.0.0.0\`: Makes the server accessible from other machines on your network (not just \`localhost\`).
-*   \`--port 8000\`: Specifies the port to run on.
+*   `main:app`: Tells Uvicorn to find the FastAPI application instance named `app` in the `main.py` file.
+*   `--reload`: Enables auto-reloading the server when code changes (useful for development).
+*   `--host 0.0.0.0`: Makes the server accessible from other machines on your network (not just `localhost`).
+*   `--port 8000`: Specifies the port to run on.
 
-The server should now be running, and you'll see output indicating this, including the address (e.g., \`http://0.0.0.0:8000\`). The SQLite database file (\`cpchain.db\`) will be created in the \`backend\` directory automatically on first run if it doesn't exist, due to the startup event handler in \`main.py\`.
+The server should now be running, and you'll see output indicating this, including the address (e.g., `http://0.0.0.0:8000`). The SQLite database file (`cpchain.db`) will be created in the `backend` directory automatically on first run if it doesn't exist, due to the startup event handler in `main.py`.
 
 ### Accessing API Documentation
 
 With the server running, FastAPI automatically provides interactive API documentation:
 
-*   **Swagger UI:** Open your browser and navigate to \`http://localhost:8000/docs\`
-*   **ReDoc:** Open your browser and navigate to \`http://localhost:8000/redoc\`
+*   **Swagger UI:** Open your browser and navigate to `http://localhost:8000/docs`
+*   **ReDoc:** Open your browser and navigate to `http://localhost:8000/redoc`
 
 These interfaces allow you to view all available API endpoints, their parameters, request/response models, and even try them out directly from your browser.
 

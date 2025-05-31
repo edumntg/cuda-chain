@@ -113,80 +113,78 @@ This section provides examples for common CPChain CLI commands. Ensure you have 
 
 Set the backend server URL. This is typically done once.
 
-\`\`\`bash
+```bash
 cpchain configure http://localhost:8000
-\`\`\`
+```
 Output:
-\`\`\`
+```
 Server URL configured to: http://localhost:8000
-\`\`\`
+```
 
 View current server URL:
-\`\`\`bash
+```bash
 cpchain configure
-\`\`\`
+```
 Output:
-\`\`\`
+```
 Current Server URL: http://localhost:8000
-\`\`\`
-
-### Authentication (\`auth\`)
+```
+### Authentication (`auth`)
 
 **1. Register a New User**
 
-\`\`\`bash
+```bash
 cpchain auth register --username youruser --password yourpass
-\`\`\`
+```
 Output (on success):
-\`\`\`
+```
 User 'youruser' registered successfully with ID: 1.
-\`\`\`
+```
 If username is taken:
-\`\`\`
+```
 Error: Registration failed. Username might be taken.
-\`\`\`
-
+```
 **2. Login**
 
-\`\`\`bash
+```bash
 cpchain auth login --username youruser --password yourpass
-\`\`\`
+```
 Output:
-\`\`\`
+```
 Login successful. Token stored for user 'youruser'.
-\`\`\`
+```
 
 **3. Check Current User (whoami)**
 
 Verify login status and token validity.
-\`\`\`bash
+```bash
 cpchain auth whoami
-\`\`\`
+```
 Output (if logged in and token is valid):
-\`\`\`
+```
 Logged in as: youruser (ID: 1)
 Token is valid.
-\`\`\`
+```
 Output (if not logged in):
-\`\`\`
+```
 You are not logged in.
-\`\`\`
+```
 
 **4. Logout**
-\`\`\`bash
+```bash
 cpchain auth logout
-\`\`\`
+```
 Output:
-\`\`\`
+```
 User 'youruser' logged out successfully.
-\`\`\`
+```
 
-### Requester Commands (\`request\`)
+### Requester Commands (`request`)
 
 **1. Submit a Training Request**
 
-First, create a \`metadata.json\` file, for example:
-\`\`\`json
+First, create a `metadata.json` file, for example:
+```json
 {
   "name": "My Image Classification Model",
   "description": "Train a ResNet50 on CIFAR-10",
@@ -200,28 +198,27 @@ First, create a \`metadata.json\` file, for example:
     "loss_function": "categorical_crossentropy"
   }
 }
-\`\`\`
-
+```
 Then, submit it:
-\`\`\`bash
+```bash
 cpchain request submit ./metadata.json
-\`\`\`
+```
 Output:
-\`\`\`
+```
 Training request submitted successfully!
 Request ID: 1
 Status: pending
 Number of batches created: 10
-\`\`\`
-Ensure \`num_batches\` is a positive integer in your metadata.
+```
+Ensure `num_batches` is a positive integer in your metadata.
 
 **2. Check Request Status**
 
-\`\`\`bash
+```bash
 cpchain request status 1
-\`\`\`
+```
 Output (example):
-\`\`\`
+```
 Status for Request ID: 1
   Overall Status: pending
   Created At: 2023-10-27T10:00:00.123456+00:00
@@ -253,18 +250,18 @@ Status for Request ID: 1
       Assigned At: N/A
       Completed At: N/A
     ... (and so on for all batches)
-\`\`\`
+```
 
-### Worker Commands (\`worker\`)
+### Worker Commands (`worker`)
 
 **1. List Available Requests**
 
 List requests that have batches available for processing.
-\`\`\`bash
+```bash
 cpchain worker list-requests
-\`\`\`
+```
 Output (example):
-\`\`\`
+```
 Available Training Requests:
   Request ID: 1
     Status: pending
@@ -276,24 +273,24 @@ Available Training Requests:
     Created At: 2023-10-27T10:05:00.789101+00:00
     Total Batches: 5
 --------------------
-\`\`\`
-You can use \`--skip\` and \`--limit\` for pagination.
+```
+You can use `--skip` and `--limit` for pagination.
 
 **2. Take a Request Batch**
 
 A worker can take the next available batch from a specific request.
-\`\`\`bash
+```bash
 cpchain worker take-request 1
-\`\`\`
+```
 Output (example, if batch 1 of request 1 was taken):
-\`\`\`
+```
 Successfully assigned to batch:
   Batch ID: 1
   Batch Number: 1
   For Request ID: 1
   Status: assigned
   Assigned Worker ID (You): 2
-\`\`\`
+```
 (Assuming the worker who ran this is User ID 2)
 
 **3. Update Batch Status**
@@ -301,27 +298,27 @@ Successfully assigned to batch:
 After processing, a worker updates the batch status.
 
 Mark as completed:
-\`\`\`bash
+```bash
 cpchain worker update-batch-status 1 completed
-\`\`\`
-(Where '1' is the Batch ID received from \`take-request\`)
+```
+(Where '1' is the Batch ID received from `take-request`)
 Output:
-\`\`\`
+```
 Batch 1 status successfully updated to 'completed'.
   New Batch Status: completed
-\`\`\`
+```
 
 Mark as failed (this will re-queue the batch for others):
-\`\`\`bash
+```bash
 cpchain worker update-batch-status 2 failed
-\`\`\`
+```
 (Where '2' is another Batch ID)
 Output:
-\`\`\`
+```
 Batch 2 status successfully updated to 'failed'.
   New Batch Status: pending
   Note: This batch should now be available for other workers if re-queued as PENDING.
-\`\`\`
+```
 ---
 
 ## Backend Server Setup & Usage
@@ -331,37 +328,37 @@ This section explains how to set up and run the CPChain backend server.
 ### Prerequisites
 
 *   Python 3.8+
-*   A virtual environment manager (e.g., \`venv\`, \`conda\`)
+*   A virtual environment manager (e.g., `venv`, `conda`)
 
 ### Setup Instructions
 
 1.  **Navigate to the Backend Directory:**
     If you have cloned the repository, change to the backend directory:
-    \`\`\`bash
+    ```bash
     cd path/to/cpchain/backend
-    \`\`\`
-    (Assuming you are in the root of the project where \`backend\` and \`cli\` directories reside)
+    ```
+    (Assuming you are in the root of the project where `backend` and `cli` directories reside)
 
 2.  **Create and Activate a Virtual Environment:**
     It's highly recommended to use a virtual environment.
-    \`\`\`bash
+    ```bash
     python -m venv venv
     source venv/bin/activate  # On Windows: venv\Scripts\activate
-    \`\`\`
+    ```
 
 3.  **Install Dependencies:**
     Install all required Python packages.
-    \`\`\`bash
+    ```bash
     pip install -r requirements.txt
-    \`\`\`
+    ```
 
 4.  **Environment Variables:**
     The server requires certain environment variables. Create a \`.env\` file in the \`backend\` directory by copying the example:
-    \`\`\`bash
+    ```bash
     cp .env.example .env
-    \`\`\`
+    ```
     Now, edit the \`.env\` file and set a strong \`SECRET_KEY\`:
-    \`\`\`dotenv
+    ```dotenv
     # backend/.env
     SECRET_KEY=your_very_strong_random_secret_key_for_jwt_at_least_32_characters
 
@@ -370,16 +367,16 @@ This section explains how to set up and run the CPChain backend server.
 
     # For PostgreSQL (example, if you set it up):
     # SQLALCHEMY_DATABASE_URL=postgresql://youruser:yourpassword@localhost:5432/cpchain_db
-    \`\`\`
+    ```
     **Important:** The \`SECRET_KEY\` is crucial for security (signing JWTs). Make it long, random, and keep it secret.
 
 ### Running the Server
 
 Once the setup is complete, you can run the FastAPI server using Uvicorn:
 
-\`\`\`bash
+```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
-\`\`\`
+```
 
 *   \`main:app\`: Tells Uvicorn to find the FastAPI application instance named \`app\` in the \`main.py\` file.
 *   \`--reload\`: Enables auto-reloading the server when code changes (useful for development).

@@ -1,6 +1,6 @@
 {% extends "base.html" %}{% set active = 'jobs' %}{% block title %}Jobs{% endblock %}
 {% block content %}
-<h1>Jobs</h1>
+<div class="titlerow"><h1>Jobs</h1><a class="button" href="/jobs/new">Submit a job</a></div>
 <p class="muted">{% if can_see_all %}Every job in {{ org }}.{% else %}Your jobs.{% endif %}</p>
 <div hx-get="/partials/jobs" hx-trigger="every 5s" hx-swap="innerHTML">{% include "partials/jobs_table.html" %}</div>
 {% endblock %}

@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% set active = 'account' %}{% block title %}Account{% endblock %}
+{% block content %}
+<h1>Account</h1>
+<p class="muted">{{ user.email }} · {{ user.role }}{% if user.name %} · {{ user.name }}{% endif %}</p>
+{% if result == 'password' %}<p class="ok" role="status">Password changed.</p>
+{% elif result == 'revoked' %}<p class="ok" role="status">Token revoked.</p>
+{% elif result.startswith('error:') %}<p class="error" role="alert">{{ result[6:] }}</p>{% endif %}
+<h2>Password</h2>
+<form method="post" action="/account/password" class="stack">
+  {% if has_password %}<label>Current password <input name="current" type="password" autocomplete="current-password" required></label>{% endif %}
+  <label>New password <input name="new" type="password" minlength="8" autocomplete="new-password" required></label>
+  <button type="submit">Change password</button>
+</form>
+<h2>Command-line logins</h2>
+{% if tokens %}
+<table><thead><tr><th>label</th><th>created</th><th>last used</th><th>expires</th><th></th></tr></thead>
+<tbody>{% for t in tokens %}<tr><td>{{ t.label }}</td><td>{{ t.created_at|ago }} ago</td><td>{{ t.last_used_at|ago }}{% if t.last_used_at %} ago{% endif %}</td><td>{% if t.expires_at %}in {{ t.expires_at|ago }}{% else %}never{% endif %}</td><td><form method="post" action="/account/tokens/{{ t.id }}/revoke"><button type="submit" class="danger">Revoke</button></form></td></tr>{% endfor %}</tbody></table>
+{% else %}<p class="empty">No command line is logged in as you. Run <code>plasmon login</code> on a machine to create one.</p>{% endif %}
+<h2>Your machines</h2>
+{% if machines %}<ul class="plain">{% for mm in machines %}<li><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> <span class="muted small">{{ mm.node_id[:12] }}…</span></li>{% endfor %}</ul>
+{% else %}<p class="empty">No machine is linked to this account.</p>{% endif %}
+{% endblock %}

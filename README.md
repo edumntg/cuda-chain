@@ -1012,9 +1012,11 @@ plasmon/
       scores in the ledger and the job page. Seeded cheaters (random Δ, copied Δ, wrong
       shard, NaN) are rejected or lose honesty in tests. Not yet: OpenSkill ratings,
       sampled re-execution, validators on separate machines.
-- [ ] **M5 Alpha run.** VPS + R2, 150 M reference model, 10–50 invited trainers. Web
-      dashboard v1: Overview, Jobs, My machine, Fleet, Server, Users, Ledger; sign-up and
-      leaderboard. Full-screen `plasmon dashboard` TUI. (Phase 1 above.)
+- [x] **M5 Dashboard v1 and alpha runbook.** Overview with loss sparklines and the
+      leaderboard, Leaderboard page, Account page (password, command-line logins),
+      job submission form, webhook notifications (JSON or Slack), `public` mode with open
+      registration, `plasmon dashboard` tabbed TUI, `docs/ALPHA-RUN.md`. The alpha run
+      itself (a public server, a reference model, volunteers) has not been executed.
 - [ ] **M6 Paid jobs.** Credits and plans in the dashboard (Stripe, USDC in; USDC out),
       job submission form, history and invoices, allow-listed fine-tune/LoRA jobs,
       community validators with bonds, P2P seeding. (Phase 2.)

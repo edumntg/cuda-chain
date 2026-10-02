@@ -18,5 +18,14 @@
     {% else %}<p class="empty">Nothing finished yet.</p>{% endif %}
   </section>
 </div>
+<section>
+  <h2>Leaderboard</h2>
+  {% if top %}
+  {% import "_macros.html" as m %}
+  <table><thead><tr><th class="num">#</th><th>machine</th><th>owner</th><th class="num">samples verified</th><th class="num">rounds</th><th class="num">honesty</th></tr></thead>
+  <tbody>{% for mm in top %}<tr><td class="num">{{ loop.index }}</td><td><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> {{ m.status(mm.status) }}</td><td>{{ mm.user.email if mm.user else '' }}</td><td class="num">{{ mm.samples_verified|num }}</td><td class="num">{{ mm.rounds_served }}</td><td class="num">{{ '%.2f'|format(mm.honesty) }}</td></tr>{% endfor %}</tbody></table>
+  <p class="muted small"><a href="/leaderboard">Full leaderboard</a></p>
+  {% else %}<p class="empty">The leaderboard fills in after the first verified round.</p>{% endif %}
+</section>
 <p class="muted small">Ledger head: {% if last %}<code>{{ last.hash[:16] }}…</code> (entry {{ last.seq }}){% else %}empty{% endif %} · <a href="/ledger">verify</a></p>
 {% endblock %}

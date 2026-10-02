@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% set active = 'leaderboard' %}{% block title %}Leaderboard{% endblock %}
+{% block content %}
+{% import "_macros.html" as m %}
+<h1>Leaderboard</h1>
+<p class="muted">Machines by samples whose updates passed verification. Honesty is the share of recent rounds where the update helped and was not a copy.</p>
+{% if rows %}
+<table><thead><tr><th class="num">#</th><th>machine</th><th>owner</th><th class="num">samples verified</th><th class="num">rounds</th><th class="num">honesty</th><th>status</th></tr></thead>
+<tbody>{% for mm in rows %}<tr><td class="num">{{ loop.index }}</td><td><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a></td><td>{{ mm.user.email if mm.user else '' }}</td><td class="num">{{ mm.samples_verified|num }}</td><td class="num">{{ mm.rounds_served }}</td><td class="num">{{ '%.2f'|format(mm.honesty) }}</td><td>{{ m.status(mm.status) }}</td></tr>{% endfor %}</tbody></table>
+{% else %}<p class="empty">No verified round yet.</p>{% endif %}
+{% endblock %}

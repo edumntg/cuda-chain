@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% set active = 'jobs' %}{% block title %}Submit a job{% endblock %}
+{% block content %}
+<h1>Submit a job</h1>
+<p class="muted">The same <code>job.yaml</code> the command line uses. The server prepares the shards, so the dataset must be <code>builtin://mnist</code> or a directory the server can read. For a dataset on your own computer use <code>plasmon job submit</code>.</p>
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/jobs/new" class="stack wide">
+  <label>Job specification<textarea name="yaml_text" rows="24" spellcheck="false" required>{{ yaml_text }}</textarea></label>
+  <button type="submit">Validate and submit</button>
+</form>
+{% endblock %}

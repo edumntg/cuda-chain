@@ -95,6 +95,8 @@ enum Command {
         #[command(subcommand)]
         cmd: LedgerCmd,
     },
+    /// Full-screen view with tabs: jobs, fleet, my machines, server.
+    Dashboard,
     /// Print shell completions.
     Completions {
         #[arg(value_enum)]
@@ -436,6 +438,14 @@ fn run() -> Result<i32> {
         Some(Command::Ledger { cmd }) => match cmd {
             LedgerCmd::Verify => commands::ledger_verify(server, cli.json),
         },
+        Some(Command::Dashboard) => {
+            if plain || cli.json {
+                commands::job_list(server, false, cli.json)?;
+                commands::fleet(server, None, cli.json).map(|_| 0)
+            } else {
+                tui::dashboard(&commands::api(server)?, Duration::from_secs(2)).map(|_| 0)
+            }
+        }
         Some(Command::Completions { shell }) => {
             clap_complete::generate(
                 shell,

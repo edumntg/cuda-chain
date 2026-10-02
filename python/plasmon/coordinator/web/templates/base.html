@@ -26,7 +26,9 @@
     <a href="/fleet" {% if active == 'fleet' %}aria-current="page"{% endif %}>Fleet</a>
     <a href="/server" {% if active == 'server' %}aria-current="page"{% endif %}>Server</a>
     {% endif %}
+    <a href="/leaderboard" {% if active == 'leaderboard' %}aria-current="page"{% endif %}>Leaderboard</a>
     <a href="/ledger" {% if active == 'ledger' %}aria-current="page"{% endif %}>Ledger</a>
+    <a href="/account" {% if active == 'account' %}aria-current="page"{% endif %}>Account</a>
     {% if role_at_least(user.role, 'admin') %}
     <a href="/users" {% if active == 'users' %}aria-current="page"{% endif %}>Users</a>
     <a href="/settings" {% if active == 'settings' %}aria-current="page"{% endif %}>Settings</a>

@@ -236,6 +236,7 @@ a.ps-pill:hover { background: var(--paper-2); }
 .ps-group-wrap.status-idle .ps-pill-state { color: var(--st-idle); }
 .ps-group-wrap.status-offline .ps-pill-state { color: var(--st-offline); }
 .ps-group-wrap.status-unavailable .ps-pill-state, .ps-group-wrap.status-paused .ps-pill-state { color: var(--ink-2); }
+.warn { color: var(--st-paused); }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--ink-2); font-size: 0.8rem; margin: 0 0 6px; }
 .legend i { display: inline-block; width: 18px; height: 0; border-top: 1px solid currentColor; vertical-align: middle; margin-right: 5px; }
 .legend .l-training { color: var(--st-training); } .legend .l-paused { color: var(--st-paused); } .legend .l-offline { color: var(--st-offline); } .legend .l-control { color: var(--accent); }

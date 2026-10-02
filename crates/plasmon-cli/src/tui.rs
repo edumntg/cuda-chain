@@ -1394,7 +1394,14 @@ impl<'a> Dash<'a> {
                 muted(),
             ),
         ]);
-        f.render_widget(Paragraph::new(head), rows[0]);
+        let mut head_lines = vec![head];
+        if let Some(w) = job["waiting_reason"].as_str() {
+            head_lines.push(Line::from(Span::styled(
+                format!(" waiting: {w}"),
+                Style::default().fg(Color::Yellow),
+            )));
+        }
+        f.render_widget(Paragraph::new(head_lines), rows[0]);
 
         // eval loss per closed round as a line chart
         if points.len() >= 2 {

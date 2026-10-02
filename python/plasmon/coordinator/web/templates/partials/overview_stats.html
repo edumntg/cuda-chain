@@ -19,6 +19,7 @@
       <div><dt>accuracy</dt><dd data-live="a-{{ j.id }}">{{ j.last_eval_acc|pct or '–' }}</dd></div>
     </dl>
     <div>{{ m.spark(losses[j.id], 220, 28) }}</div>
+    {% if waiting.get(j.id) %}<div class="small warn">{{ waiting[j.id] }}</div>{% endif %}
     <div class="muted small">{{ j.owner.email if j.owner else '' }} · {{ j.spec.model.arch }}</div>
   </a>
   {% endfor %}

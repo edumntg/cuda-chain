@@ -56,6 +56,15 @@ class ScoringConfig(BaseModel):
     max_eval_samples: int = 2000
 
 
+class WebhookConfig(BaseModel):
+    """A URL that receives job and fleet events. `format: slack` sends {"text": ...}."""
+
+    model_config = ConfigDict(extra="forbid")
+    url: str
+    events: list[str] = Field(default_factory=list, description="empty means all: job.completed, job.failed, job.cancelled, machine.offline, machine.error")
+    format: Literal["json", "slack"] = "json"
+
+
 class RetentionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     heartbeats_hours: int = 24
@@ -113,6 +122,7 @@ class ServerConfig(BaseModel):
     policy: PolicyConfig = PolicyConfig()
     retention: RetentionConfig = RetentionConfig()
     scoring: ScoringConfig = ScoringConfig()
+    webhooks: list[WebhookConfig] = Field(default_factory=list)
     run_worker: bool = True  # the round scheduler runs inside the API process
     tick_interval_s: float = 1.0
 

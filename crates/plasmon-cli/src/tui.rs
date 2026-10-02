@@ -785,3 +785,233 @@ pub fn server_watch(api: &Api, interval: Duration) -> Result<()> {
     }
     Ok(())
 }
+
+#[derive(Clone, Copy, PartialEq)]
+enum Tab {
+    Jobs,
+    Fleet,
+    Machines,
+    Server,
+}
+
+/// `plasmon dashboard`: one screen, four tabs, refreshed on an interval.
+pub fn dashboard(api: &Api, interval: Duration) -> Result<()> {
+    let mut term = Term::enter()?;
+    let mut tab = Tab::Jobs;
+    let mut last = Instant::now() - interval;
+    let mut jobs = Value::Array(vec![]);
+    let mut fleet = Value::Array(vec![]);
+    let mut summary = Value::Null;
+    let mut me = Value::Null;
+    let mut status = Value::Null;
+    let mut error: Option<String> = None;
+    loop {
+        if last.elapsed() >= interval {
+            me = api.get("/v1/auth/me").unwrap_or(Value::Null);
+            match api
+                .get("/v1/jobs?all=true")
+                .or_else(|_| api.get("/v1/jobs"))
+            {
+                Ok(v) => {
+                    jobs = v;
+                    error = None;
+                }
+                Err(e) => error = Some(e.to_string()),
+            }
+            if let Ok(v) = api.get("/v1/fleet") {
+                fleet = v;
+            }
+            if let Ok(v) = api.get("/v1/fleet/summary") {
+                summary = v;
+            }
+            status = api.get("/v1/server/status").unwrap_or(Value::Null);
+            last = Instant::now();
+        }
+        term.terminal.draw(|f| {
+            let chunks = Layout::vertical([
+                Constraint::Length(2),
+                Constraint::Min(5),
+                Constraint::Length(1),
+            ])
+            .split(f.area());
+            let tabs = [
+                (Tab::Jobs, "j jobs"),
+                (Tab::Fleet, "f fleet"),
+                (Tab::Machines, "m my machines"),
+                (Tab::Server, "s server"),
+            ];
+            let mut spans = vec![Span::styled(
+                "plasmon ",
+                Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+            )];
+            for (t, label) in tabs {
+                let style = if t == tab {
+                    Style::default()
+                        .fg(ACCENT)
+                        .add_modifier(Modifier::UNDERLINED)
+                } else {
+                    Style::default().fg(MUTED)
+                };
+                spans.push(Span::styled(format!("  {label}  "), style));
+            }
+            spans.push(Span::styled(
+                format!(
+                    "   {} · {} of {} machines online · {} jobs running",
+                    me["user"]["email"].as_str().unwrap_or(""),
+                    summary["online"],
+                    summary["machines"],
+                    summary["jobs_running"]
+                ),
+                Style::default().fg(MUTED),
+            ));
+            f.render_widget(Paragraph::new(Line::from(spans)), chunks[0]);
+            match tab {
+                Tab::Jobs => {
+                    let rows: Vec<Row> = jobs
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .map(|j| Row::new(job_row(j).into_iter().map(Cell::from)))
+                        .collect();
+                    let table = Table::new(
+                        rows,
+                        [
+                            Constraint::Length(18),
+                            Constraint::Min(16),
+                            Constraint::Length(10),
+                            Constraint::Length(8),
+                            Constraint::Length(10),
+                            Constraint::Length(9),
+                        ],
+                    )
+                    .header(
+                        Row::new(["job", "name", "state", "round", "eval loss", "eval acc"])
+                            .style(Style::default().fg(MUTED)),
+                    );
+                    f.render_widget(table, chunks[1]);
+                }
+                Tab::Fleet | Tab::Machines => {
+                    let mine = me["user"]["email"].as_str().unwrap_or("").to_string();
+                    let filtered: Vec<Value> = fleet
+                        .as_array()
+                        .into_iter()
+                        .flatten()
+                        .filter(|m| tab == Tab::Fleet || m["owner"].as_str() == Some(mine.as_str()))
+                        .cloned()
+                        .collect();
+                    let rows: Vec<Row> = fleet_rows(&Value::Array(filtered))
+                        .into_iter()
+                        .map(|r| {
+                            let color = status_color(&r[2]);
+                            Row::new(r.into_iter().enumerate().map(|(i, c)| {
+                                if i == 2 {
+                                    Cell::from(format!("● {c}")).style(Style::default().fg(color))
+                                } else {
+                                    Cell::from(c)
+                                }
+                            }))
+                        })
+                        .collect();
+                    let widths = [
+                        Constraint::Length(16),
+                        Constraint::Length(18),
+                        Constraint::Length(13),
+                        Constraint::Length(18),
+                        Constraint::Length(5),
+                        Constraint::Length(5),
+                        Constraint::Length(5),
+                        Constraint::Min(16),
+                        Constraint::Length(7),
+                        Constraint::Length(6),
+                    ];
+                    f.render_widget(
+                        Table::new(rows, widths)
+                            .header(Row::new(FLEET_HEADERS).style(Style::default().fg(MUTED))),
+                        chunks[1],
+                    );
+                }
+                Tab::Server => {
+                    let lines = if status.is_null() {
+                        vec![Line::from(Span::styled(
+                            "server status needs the operator role",
+                            Style::default().fg(MUTED),
+                        ))]
+                    } else {
+                        let running = status["scheduler"]["running"] == true;
+                        vec![
+                            Line::from(format!(
+                                "version {}  mode {}  uptime {} s",
+                                crate::commands::s(&status["version"]),
+                                crate::commands::s(&status["mode"]),
+                                status["uptime_s"]
+                            )),
+                            Line::from(vec![
+                                Span::raw("scheduler "),
+                                Span::styled(
+                                    if running {
+                                        "● running"
+                                    } else {
+                                        "✖ stopped"
+                                    },
+                                    Style::default().fg(status_color(if running {
+                                        "training"
+                                    } else {
+                                        "error"
+                                    })),
+                                ),
+                            ]),
+                            Line::from(format!(
+                                "db {} ({} ms)",
+                                crate::commands::s(&status["db"]["url"]),
+                                status["db"]["ping_ms"]
+                            )),
+                            Line::from(format!("blobs {} B", status["blobs"]["bytes"])),
+                            Line::from(format!(
+                                "ledger entries {}  head {}…",
+                                status["ledger"]["entries"],
+                                crate::commands::s(&status["ledger"]["head"])
+                                    .chars()
+                                    .take(16)
+                                    .collect::<String>()
+                            )),
+                            Line::from(format!(
+                                "users {}  machines {}  jobs {} ({} running)",
+                                status["counts"]["users"],
+                                status["counts"]["machines"],
+                                status["counts"]["jobs"],
+                                status["counts"]["jobs_running"]
+                            )),
+                        ]
+                    };
+                    f.render_widget(Paragraph::new(lines), chunks[1]);
+                }
+            }
+            let foot = match &error {
+                Some(e) => Span::styled(
+                    format!("  {e}"),
+                    Style::default().fg(status_color("offline")),
+                ),
+                None => Span::styled(
+                    format!("  j f m s switch tab   q quit   ↻ {} s", interval.as_secs()),
+                    Style::default().fg(MUTED),
+                ),
+            };
+            f.render_widget(Paragraph::new(foot), chunks[2]);
+        })?;
+        if event::poll(Duration::from_millis(250))? {
+            if let Event::Key(k) = event::read()? {
+                if k.kind == KeyEventKind::Press {
+                    match k.code {
+                        KeyCode::Char('q') | KeyCode::Esc => break,
+                        KeyCode::Char('j') => tab = Tab::Jobs,
+                        KeyCode::Char('f') => tab = Tab::Fleet,
+                        KeyCode::Char('m') => tab = Tab::Machines,
+                        KeyCode::Char('s') => tab = Tab::Server,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    Ok(())
+}

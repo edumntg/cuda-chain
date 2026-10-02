@@ -155,14 +155,23 @@ def overview(request: Request, p: Principal = Depends(principal_optional), sessi
     recent = session.scalars(select(db.Job).where(db.Job.status != "running").order_by(db.Job.finished_at.desc()).limit(5)).all()
     mine = session.scalars(select(db.Machine).where(db.Machine.user_id == user.id)).all()
     last = session.scalar(select(db.LedgerEntry).order_by(db.LedgerEntry.seq.desc()).limit(1))
-    return render(request, "overview.html", p, summary=_summary(session), active_jobs=active, recent=recent, mine=mine, last=last)
+    top = session.scalars(select(db.Machine).where(db.Machine.samples_verified > 0).order_by(db.Machine.samples_verified.desc()).limit(10)).all()
+    return render(request, "overview.html", p, summary=_summary(session), active_jobs=active, losses=_losses(session, active), recent=recent, mine=mine, last=last, top=top)
+
+
+def _losses(session: Session, jobs: list[db.Job]) -> dict[str, list[float]]:
+    out = {}
+    for j in jobs:
+        rows = session.scalars(select(db.Round.eval_loss).where(db.Round.job_id == j.id, db.Round.status == "closed").order_by(db.Round.index)).all()
+        out[j.id] = [float(v) for v in rows if v is not None]
+    return out
 
 
 @router.get("/partials/overview", response_class=HTMLResponse)
 def overview_partial(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
     need_user(p)
     active = session.scalars(select(db.Job).where(db.Job.status == "running").order_by(db.Job.created_at.desc()).limit(6)).all()
-    return render(request, "partials/overview_stats.html", p, summary=_summary(session), active_jobs=active)
+    return render(request, "partials/overview_stats.html", p, summary=_summary(session), active_jobs=active, losses=_losses(session, active))
 
 
 @router.get("/jobs", response_class=HTMLResponse)
@@ -182,6 +191,43 @@ def _jobs_for(session: Session, user: db.User) -> list[db.Job]:
 def jobs_partial(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
     user = need_user(p)
     return render(request, "partials/jobs_table.html", p, jobs=_jobs_for(session, user))
+
+
+@router.get("/jobs/new", response_class=HTMLResponse)
+def job_new_page(request: Request, p: Principal = Depends(principal_optional)):
+    user = need_user(p)
+    if "jobs:write" not in auth.ROLE_SCOPES[user.role]:
+        raise HTTPException(403, "your role cannot submit jobs")
+    from pathlib import Path
+
+    example = Path(__file__).resolve().parents[3] / "examples" / "mnist" / "job.yaml"
+    text = example.read_text() if example.exists() else "name: my-job\nmodel: {arch: mnist_cnn}\ndataset: {source: builtin://mnist}\nbudget: {rounds: 10}\n"
+    return render(request, "job_new.html", p, yaml_text=text, error=None)
+
+
+@router.post("/jobs/new")
+def job_new_submit(request: Request, yaml_text: str = Form(), p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    """Prepare the job on the server: the dataset must be builtin or readable by the server."""
+    user = need_user(p)
+    if "jobs:write" not in auth.ROLE_SCOPES[user.role]:
+        raise HTTPException(403, "your role cannot submit jobs")
+    from .. import jobs as jobs_mod
+    from ..core import jobspec
+
+    try:
+        spec = jobspec.loads(yaml_text)
+        prepared = jobs_mod.prepare(spec)
+        for blob_id, data in prepared["blobs"].items():
+            if not state.blobs.exists(blob_id):
+                state.blobs.put(data, expected_id=blob_id)
+        job = state.engine.create_job(session, user, spec, prepared["init_blob"], prepared["shards"], prepared["eval_blob"], prepared["param_count"])
+    except (ValueError, FileNotFoundError) as e:
+        return render(request, "job_new.html", p, yaml_text=yaml_text, error=str(e))
+    except Exception as e:  # engine errors carry a message for the user
+        return render(request, "job_new.html", p, yaml_text=yaml_text, error=str(e))
+    session.add(db.AuditEvent(actor_id=user.id, action="job.create", target=job.id, detail={"via": "dashboard"}))
+    session.commit()
+    return RedirectResponse(f"/jobs/{job.id}", status_code=303)
 
 
 @router.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -371,3 +417,39 @@ def settings_policy(request: Request, windows_text: str = Form(""), pause_on_bat
         return RedirectResponse(f"/settings?result=error:{e}", status_code=303)
     api_fleet.put_policy(new, user, session, state)
     return RedirectResponse("/settings?result=saved", status_code=303)
+
+
+@router.get("/leaderboard", response_class=HTMLResponse)
+def leaderboard_page(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    need_user(p)
+    rows = session.scalars(select(db.Machine).where(db.Machine.samples_verified > 0).order_by(db.Machine.samples_verified.desc()).limit(100)).all()
+    return render(request, "leaderboard.html", p, rows=rows)
+
+
+@router.get("/account", response_class=HTMLResponse)
+def account_page(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    user = need_user(p)
+    tokens = session.scalars(select(db.Token).where(db.Token.user_id == user.id, db.Token.revoked.is_(False)).order_by(db.Token.created_at.desc())).all()
+    machines = session.scalars(select(db.Machine).where(db.Machine.user_id == user.id)).all()
+    return render(request, "account.html", p, tokens=tokens, machines=machines, result=request.query_params.get("result", ""), has_password=bool(user.password_hash))
+
+
+@router.post("/account/password")
+def account_password(current: str = Form(""), new: str = Form(), p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    user = need_user(p)
+    try:
+        api_auth.change_password(api_auth.PasswordIn(current=current, new=new), user, session)
+    except HTTPException as e:
+        return RedirectResponse(f"/account?result=error:{e.detail}", status_code=303)
+    return RedirectResponse("/account?result=password", status_code=303)
+
+
+@router.post("/account/tokens/{token_id}/revoke")
+def account_revoke(token_id: str, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    user = need_user(p)
+    tok = session.get(db.Token, token_id)
+    if tok is not None and tok.user_id == user.id:
+        tok.revoked = True
+        session.add(db.AuditEvent(actor_id=user.id, action="token.revoke", target=token_id))
+        session.commit()
+    return RedirectResponse("/account?result=revoked", status_code=303)

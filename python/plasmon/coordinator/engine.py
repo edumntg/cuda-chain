@@ -56,7 +56,8 @@ class Assignment:
 
 
 class Engine:
-    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None, scoring_cfg=None):
+    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None, scoring_cfg=None, notifier=None):
+        self.notifier = notifier
         self.blobs = blobs
         self.bus = bus
         self.server = server
@@ -121,6 +122,7 @@ class Engine:
         session.commit()
         self.bus.publish(f"job:{job.id}", {"event": "cancelled", "job": job.id})
         self.bus.publish("jobs", {"event": "cancelled", "job": job.id})
+        self.notify("job.cancelled", f"job {job.name} ({job.id}) cancelled after {job.round_index} rounds: {reason}", job=job.id, name=job.name)
 
     def _open_round(self, session: Session, job: db.Job, spec: JobSpec) -> db.Round:
         rnd = db.Round(
@@ -286,6 +288,7 @@ class Engine:
                         job.finished_at = db.now()
                         session.commit()
                         self.bus.publish(f"job:{job.id}", {"event": "failed", "job": job.id})
+                        self.notify("job.failed", f"job {job.name} ({job.id}) failed: aggregation error", job=job.id, name=job.name)
 
     def _cleanup(self, session: Session) -> None:
         """Delete old heartbeats, logs and device codes on the retention schedule."""
@@ -308,6 +311,7 @@ class Engine:
                 u.status = "expired"
                 u.reject_reason = "machine went offline"
             self.bus.publish("fleet", {"event": "offline", "node": m.node_id})
+            self.notify("machine.offline", f"machine {m.name} went offline", node=m.node_id, name=m.name)
         session.commit()
 
     def _tick_job(self, session: Session, job: db.Job) -> None:
@@ -411,13 +415,16 @@ class Engine:
         job.outer_state_blob = state_blob
         job.last_eval_loss, job.last_eval_acc = eval_loss, eval_acc
         job.round_index += 1
-        if job.round_index >= job.total_rounds:
+        finished = job.round_index >= job.total_rounds
+        if finished:
             job.status = "completed"
             job.finished_at = db.now()
             ledger.append(session, self.server, "job_finished", {"job": job.id, "status": "completed", "rounds": job.round_index, "theta": new_blob})
         else:
             self._open_round(session, job, spec)
         session.commit()
+        if finished:
+            self.notify("job.completed", f"job {job.name} ({job.id}) completed: eval loss {eval_loss:.4f}, accuracy {100 * eval_acc:.1f} %", job=job.id, name=job.name, eval_loss=eval_loss, eval_acc=eval_acc)
         self.bus.publish(
             f"job:{job.id}",
             {"event": "round_closed", "job": job.id, "round": rnd.index, "eval_loss": eval_loss, "eval_acc": eval_acc, "accepted": len(accepted), "status": job.status},
@@ -468,6 +475,11 @@ class Engine:
                 u.reject_reason = verdict.reason
                 self.bus.publish(f"job:{job.id}", {"event": "rejected", "job": job.id, "round": rnd.index, "node": m.node_id, "reason": verdict.reason})
         return deltas, weights_, accepted
+
+
+    def notify(self, event: str, text: str, **data) -> None:
+        if self.notifier is not None:
+            self.notifier.send(event, text, data)
 
 
 def _machine_fits(machine: db.Machine, spec: JobSpec) -> bool:

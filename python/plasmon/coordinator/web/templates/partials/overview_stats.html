@@ -18,11 +18,11 @@
 <h2>Active jobs</h2>
 {% if active_jobs %}
 <table>
-  <thead><tr><th>job</th><th>owner</th><th class="num">round</th><th class="num">eval loss</th><th class="num">eval acc</th></tr></thead>
+  <thead><tr><th>job</th><th>owner</th><th class="num">round</th><th class="num">eval loss</th><th class="num">eval acc</th><th>loss per round</th></tr></thead>
   <tbody>
   {% for j in active_jobs %}
-    <tr><td><a href="/jobs/{{ j.id }}">{{ j.name }}</a></td><td>{{ j.owner.email if j.owner else '' }}</td><td class="num">{{ j.round_index }} / {{ j.total_rounds }}</td><td class="num">{{ j.last_eval_loss|f3 }}</td><td class="num">{{ j.last_eval_acc|pct }}</td></tr>
+    <tr><td><a href="/jobs/{{ j.id }}">{{ j.name }}</a></td><td>{{ j.owner.email if j.owner else '' }}</td><td class="num">{{ j.round_index }} / {{ j.total_rounds }}</td><td class="num">{{ j.last_eval_loss|f3 }}</td><td class="num">{{ j.last_eval_acc|pct }}</td><td>{{ m.spark(losses[j.id]) }}</td></tr>
   {% endfor %}
   </tbody>
 </table>
-{% else %}<p class="empty">No job is running. Submit one with <code>plasmon job submit job.yaml</code>.</p>{% endif %}
+{% else %}<p class="empty">No job is running. Submit one with <code>plasmon job submit job.yaml</code> or <a href="/jobs/new">from this page</a>.</p>{% endif %}

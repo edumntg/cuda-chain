@@ -85,6 +85,7 @@ class HeartbeatIn(BaseModel):
 @router.post("/heartbeat")
 def heartbeat(body: HeartbeatIn, machine: db.Machine = Depends(current_machine), session: Session = Depends(get_session), state=Depends(get_state)):
     machine = session.get(db.Machine, machine.id)
+    was = machine.status
     machine.last_seen_at = db.now()
     machine.status = body.status
     machine.status_detail = body.status_detail
@@ -106,6 +107,8 @@ def heartbeat(body: HeartbeatIn, machine: db.Machine = Depends(current_machine),
             assignment = a.as_dict()
     session.commit()
     state.bus.publish("fleet", {"event": "heartbeat", "node": machine.node_id, "status": body.status, "job": body.job_id, "round": body.round})
+    if body.status == "error" and was != "error":
+        state.engine.notify("machine.error", f"machine {machine.name} reports an error: {body.status_detail}", node=machine.node_id, name=machine.name)
     for line in body.logs[:200]:
         state.bus.publish(f"logs:{machine.node_id}", {"node": machine.node_id, **line})
     return {

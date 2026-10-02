@@ -186,3 +186,19 @@ def revoke_token(token_id: str, user: db.User = Depends(current_user), session: 
     tok.revoked = True
     session.commit()
     return {"ok": True}
+
+
+class PasswordIn(BaseModel):
+    current: str = ""
+    new: str = Field(min_length=8, max_length=256)
+
+
+@router.post("/password")
+def change_password(body: PasswordIn, user: db.User = Depends(current_user), session: Session = Depends(get_session)):
+    user = session.get(db.User, user.id)
+    if user.password_hash and not auth.verify_password(user.password_hash, body.current):
+        raise HTTPException(401, "current password is wrong")
+    user.password_hash = auth.hash_password(body.new)
+    session.add(db.AuditEvent(actor_id=user.id, action="user.password", target=user.id))
+    session.commit()
+    return {"ok": True}

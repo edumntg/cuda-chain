@@ -145,8 +145,7 @@ def cmd_server_init(args: argparse.Namespace) -> int:
     from .coordinator import config
 
     cfg = config.ServerConfig(mode=args.mode, port=args.port, org_name=args.org, public_url=args.public_url)
-    if args.mode != "home":
-        cfg.auth.open_registration = False
+    cfg.auth.open_registration = args.mode in ("home", "public")
     if args.sso_issuer:
         cfg.oidc.issuer = args.sso_issuer
         cfg.oidc.client_id = args.sso_client_id

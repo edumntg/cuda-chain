@@ -107,6 +107,18 @@ def fleet_machine(node_id: str, user: db.User = Depends(current_user), session: 
     return {**machine_out(m), "history": [{"at": h.at, "status": h.status, "metrics": h.metrics} for h in history]}
 
 
+@router.get("/leaderboard")
+def leaderboard(limit: int = 20, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    """Machines by verified samples. Names are visible to everyone who can log in."""
+    if p.user is None:
+        raise HTTPException(401, "login required")
+    rows = session.scalars(select(db.Machine).where(db.Machine.samples_verified > 0).order_by(db.Machine.samples_verified.desc()).limit(min(limit, 100))).all()
+    return [
+        {"rank": i + 1, "name": m.name, "node_id": m.node_id[:8], "owner": m.user.email if m.user else None, "samples_verified": m.samples_verified, "rounds_served": m.rounds_served, "honesty": m.honesty, "status": m.status}
+        for i, m in enumerate(rows)
+    ]
+
+
 # ----- events (SSE) ------------------------------------------------------------------
 
 @router.get("/events")

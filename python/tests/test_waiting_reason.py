@@ -40,11 +40,11 @@ def test_waiting_reason_and_busy_scope(server, dataset_dir, monkeypatch, tmp_pat
     idle = {"status": "idle", "status_detail": "", "job_id": None, "round": None, "metrics": {}, "logs": []}
     assert machine.heartbeat(idle)["assignment"] is None
     reason = owner.job(needs_gpu["id"])["waiting_reason"]
-    assert reason == "1 idle machine does not meet the job requirements: device cuda", reason
+    assert reason == "1 free machine does not meet the job requirements: device cuda", reason
     assert any(j["id"] == needs_gpu["id"] and j["waiting_reason"] == reason for j in owner.jobs())
 
     machine.heartbeat({**idle, "status": "paused", "status_detail": "paused by owner"})
-    assert owner.job(needs_gpu["id"])["waiting_reason"] == "1 machine online but none is idle: 1 paused"
+    assert owner.job(needs_gpu["id"])["waiting_reason"] == "1 machine online but none is free: 1 paused"
 
     any_device = jobs.submit(owner, _spec("any-device", dataset_dir, "any"), progress=lambda s: None)
     assigned = machine.heartbeat(idle)["assignment"]
@@ -54,7 +54,10 @@ def test_waiting_reason_and_busy_scope(server, dataset_dir, monkeypatch, tmp_pat
     assert detail["trainers"] == [{"node": ident.node_id, "name": "cpu-box", "round": 0, "status": "assigned", "current": True}]
     # the machine holds an update now, so a third job explains that instead of the requirements
     third = jobs.submit(owner, _spec("third", dataset_dir, "any"), progress=lambda s: None)
-    assert owner.job(third["id"])["waiting_reason"].startswith("1 idle machine still holds an update of another round")
+    assert owner.job(third["id"])["waiting_reason"] == "1 machine online but none is free: 1 busy with another round"
+    # a machine between rounds reports `training` and asks with ready=true; the reply carries its job's state
+    reply = machine.heartbeat({**idle, "status": "training", "job_id": any_device["id"], "round": 0, "ready": True})
+    assert reply["assignment"] is None and reply["job"] == {"status": "running", "round": 0}
 
     # a job that failed mid-round must not keep its trainer busy for ever
     url = owner.server_status()["db"]["url"]
@@ -70,7 +73,9 @@ def test_waiting_reason_and_busy_scope(server, dataset_dir, monkeypatch, tmp_pat
     with httpx.Client(base_url=server, follow_redirects=False, timeout=30) as web:
         r = web.post("/login", data={"email": "why@example.com", "password": "why-password", "next": "/"})
         web.cookies.update(r.cookies)
+        expected = owner.job(needs_gpu["id"])["waiting_reason"]
+        assert expected == "1 machine online but none is free: 1 busy with another round"
         page = web.get(f"/jobs/{needs_gpu['id']}")
-        assert page.status_code == 200 and "does not meet the job requirements: device cuda" in page.text
+        assert page.status_code == 200 and expected in page.text
         overview = web.get("/partials/overview")
-        assert overview.status_code == 200 and "does not meet the job requirements: device cuda" in overview.text
+        assert overview.status_code == 200 and expected in overview.text

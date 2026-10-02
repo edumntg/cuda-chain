@@ -549,15 +549,30 @@ def waiting_reason(session: Session, job: db.Job) -> str | None:
     machines = session.scalars(select(db.Machine).where(db.Machine.status != "offline")).all()
     if not machines:
         return "No machine is online. Start one with: plasmon trainer start"
-    idle = [m for m in machines if m.status == "idle" and not m.paused_by_admin and not m.draining]
-    if not idle:
-        counts: dict[str, int] = {}
-        for m in machines:
-            key = "paused" if m.paused_by_admin else m.status
-            counts[key] = counts.get(key, 0) + 1
-        detail = ", ".join(f"{n} {st}" for st, n in sorted(counts.items()))
-        return f"{_plural(len(machines), 'machine')} online but none is idle: {detail}"
-    fit = [m for m in idle if _machine_fits(m, spec)]
+
+    def held_back(m: db.Machine) -> str | None:
+        if m.paused_by_admin:
+            return "paused"
+        if m.draining:
+            return "draining"
+        if m.status not in ("idle", "training"):
+            return m.status
+        if _holds_update(session, m):
+            return "busy with another round"
+        return None
+
+    kinds: dict[str, int] = {}
+    free: list[db.Machine] = []
+    for m in machines:
+        kind = held_back(m)
+        if kind is None:
+            free.append(m)
+        else:
+            kinds[kind] = kinds.get(kind, 0) + 1
+    if not free:
+        detail = ", ".join(f"{n} {k}" for k, n in sorted(kinds.items()))
+        return f"{_plural(len(machines), 'machine')} online but none is free: {detail}"
+    fit = [m for m in free if _machine_fits(m, spec)]
     if not fit:
         req = spec.requirements
         need = []
@@ -565,13 +580,10 @@ def waiting_reason(session: Session, job: db.Job) -> str | None:
             need.append(f"device {req.device}")
         if req.min_vram_gb:
             need.append(f"{req.min_vram_gb:g} GB of GPU memory")
-        verb = "does" if len(idle) == 1 else "do"
-        return f"{_plural(len(idle), 'idle machine')} {verb} not meet the job requirements: {' and '.join(need)}"
-    free = [m for m in fit if not _holds_update(session, m)]
-    if not free:
-        return f"{_plural(len(fit), 'idle machine')} still holds an update of another round; it is free when that round closes or expires"
-    verb = "fits" if len(free) == 1 else "fit"
-    return f"{_plural(len(free), 'idle machine')} {verb}; the next heartbeat assigns the round"
+        verb = "does" if len(free) == 1 else "do"
+        return f"{_plural(len(free), 'free machine')} {verb} not meet the job requirements: {' and '.join(need)}"
+    verb = "fits" if len(fit) == 1 else "fit"
+    return f"{_plural(len(fit), 'free machine')} {verb}; the next heartbeat assigns the round"
 
 
 def recent_trainers(session: Session, job: db.Job, show_names: bool = True) -> list[dict[str, Any]]:

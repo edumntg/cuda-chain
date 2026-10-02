@@ -1775,7 +1775,7 @@ fn machine_row(m: &Value, full: bool, plain: bool) -> Row<'static> {
     };
     let detail = if status == "training" {
         match (met["step"].as_u64(), met["steps_total"].as_u64()) {
-            (Some(a), Some(b)) if b > 0 => format!("step {a}/{b}"),
+            (Some(a), Some(b)) if b > 0 && a < b => format!("step {a}/{b}"),
             _ => s(&m["status_detail"]),
         }
     } else {

@@ -180,7 +180,8 @@
     opts = opts || {};
     var met = m.metrics || {}, gpu = (m.hardware || {}).gpu || {}, hasGpu = gpu.kind && gpu.kind !== "none";
     var st = opts.status || statusOfMachine(m);
-    var sub = opts.sub || (st === "training" ? ("round " + m.current_round + (met.steps_total ? " · " + met.step + "/" + met.steps_total : "")) : (m.status_detail || (st === "idle" ? "waiting for a round" : st)));
+    var stepping = met.steps_total && met.step < met.steps_total;
+    var sub = opts.sub || (st === "training" ? (stepping ? "round " + m.current_round + " · " + met.step + "/" + met.steps_total : (m.status_detail || "round " + m.current_round)) : (m.status_detail || (st === "idle" ? "waiting for a round" : st)));
     var n = nodeEl(parent, "m:" + m.node_id, "/machine/" + m.node_id);
     setNode(n, {
       status: st, icon: osIcon(m), title: m.name || m.node_id.slice(0, 8), sub: sub, href: "/machine/" + m.node_id,

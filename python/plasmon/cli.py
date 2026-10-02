@@ -40,6 +40,28 @@ def _client(args: argparse.Namespace, need_login: bool = True) -> Client:
     return Client(server, token)
 
 
+def _ago(value) -> str:
+    """`12 s`, `3 min`, `2 h` since an ISO timestamp in UTC, as the dashboard shows it."""
+    if not value:
+        return "never"
+    import datetime as dt
+
+    try:
+        then = dt.datetime.fromisoformat(str(value))
+    except ValueError:
+        return str(value)
+    if then.tzinfo is not None:
+        then = then.astimezone(dt.UTC).replace(tzinfo=None)
+    s = int((dt.datetime.now(dt.UTC).replace(tzinfo=None) - then).total_seconds())
+    if s < 60:
+        return f"{s} s"
+    if s < 3600:
+        return f"{s // 60} min"
+    if s < 86400:
+        return f"{s // 3600} h"
+    return f"{s // 86400} d"
+
+
 def _fmt_table(rows: list[list[str]], headers: list[str]) -> str:
     widths = [max(len(str(h)), *(len(str(r[i])) for r in rows)) if rows else len(h) for i, h in enumerate(headers)]
     line = "  ".join(str(h).ljust(w) for h, w in zip(headers, widths))
@@ -282,6 +304,7 @@ def cmd_trainer_start(args: argparse.Namespace) -> int:
     from .trainer import agent
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%H:%M:%S")
+    logging.getLogger("httpx").setLevel(logging.WARNING)  # one line per request is noise next to the round lines
     creds = credentials.load_user()
     server = args.server or (creds.server if creds else None)
     if server is None:
@@ -313,7 +336,7 @@ def cmd_fleet(args: argparse.Namespace) -> int:
             m["name"], m.get("owner") or "", m["status"], gpu.get("name", "none" if gpu.get("kind") in (None, "none") else gpu.get("kind")),
             f"{met.get('gpu_pct', '')}", f"{met.get('cpu_pct', '')}", f"{met.get('ram_pct', '')}",
             f"{m['current_job_id'] or ''} {('r' + str(m['current_round'])) if m['current_round'] is not None else ''}".strip(),
-            f"{m['honesty']:.2f}", m["last_seen_at"][11:19] if m.get("last_seen_at") else "never",
+            f"{m['honesty']:.2f}", _ago(m.get("last_seen_at")),
         ])
     _print(args, machines, _fmt_table(rows, ["machine", "owner", "status", "gpu", "gpu%", "cpu%", "ram%", "job / round", "honesty", "seen"]) if rows else "no machines")
     return 0

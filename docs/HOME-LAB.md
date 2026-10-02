@@ -4,7 +4,8 @@ This procedure trains an MNIST classifier on two computers at home. The Mac runs
 coordinator and one trainer. The Windows PC runs a second trainer. You submit the job from
 the Mac and watch it on both.
 
-The same steps work with the roles reversed, or with more computers.
+The same steps work with the roles reversed. For more computers or other systems, see
+[LOCAL-NETWORK.md](LOCAL-NETWORK.md) and the scripts in `examples/local-network/`.
 
 ## Before you start
 

@@ -1,8 +1,9 @@
 # Quickstart: one machine
 
 This procedure runs the coordinator, one trainer and one training job on the same
-computer. Use it to see the full cycle in ten minutes. For two or more computers at home,
-see [HOME-LAB.md](HOME-LAB.md). For a company server, see [SELF-HOSTING.md](SELF-HOSTING.md).
+computer. Use it to see the full cycle in ten minutes. For several computers on one
+Wi-Fi, see [LOCAL-NETWORK.md](LOCAL-NETWORK.md). For exactly a Mac and a Windows PC, see
+[HOME-LAB.md](HOME-LAB.md). For a company server, see [SELF-HOSTING.md](SELF-HOSTING.md).
 
 ## Requirements
 

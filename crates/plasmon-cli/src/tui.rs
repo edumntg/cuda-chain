@@ -10,7 +10,7 @@ use crossterm::terminal::{
 };
 use crossterm::ExecutableCommand;
 use ratatui::prelude::*;
-use ratatui::widgets::{Block, Borders, Cell, Paragraph, Row, Sparkline, Table};
+use ratatui::widgets::{Block, Borders, Cell, Gauge, Paragraph, Row, Sparkline, Table};
 use serde_json::Value;
 use std::io::{stdout, IsTerminal};
 use std::time::{Duration, Instant};
@@ -501,4 +501,287 @@ fn poll_quit(timeout: Duration) -> Result<bool> {
         }
     }
     Ok(false)
+}
+
+/// `plasmon fleet show <node> --watch`: one machine, live.
+pub fn machine_watch(api: &Api, node: &str, interval: Duration) -> Result<()> {
+    let mut term = Term::enter()?;
+    let mut last = Instant::now() - interval;
+    let mut m = Value::Null;
+    let mut logs = Value::Array(vec![]);
+    let mut error: Option<String> = None;
+    loop {
+        if last.elapsed() >= interval {
+            match api.get(&format!("/v1/fleet/{node}")) {
+                Ok(v) => {
+                    m = v;
+                    error = None;
+                }
+                Err(e) => error = Some(e.to_string()),
+            }
+            if let Ok(l) = api.get(&format!("/v1/fleet/{node}/logs?limit=30")) {
+                logs = l;
+            }
+            last = Instant::now();
+        }
+        term.terminal.draw(|f| {
+            let chunks = Layout::vertical([
+                Constraint::Length(3),
+                Constraint::Length(3),
+                Constraint::Length(4),
+                Constraint::Min(5),
+                Constraint::Length(1),
+            ])
+            .split(f.area());
+            let status = m["status"].as_str().unwrap_or("");
+            let head = Line::from(vec![
+                Span::styled(
+                    format!("{} ", m["name"].as_str().unwrap_or(node)),
+                    Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                ),
+                Span::styled(
+                    format!("● {status} "),
+                    Style::default().fg(status_color(status)),
+                ),
+                Span::raw(m["status_detail"].as_str().unwrap_or("").to_string()),
+                Span::styled(
+                    format!(
+                        "   job {} round {}   seen {} ago",
+                        crate::commands::s(&m["current_job_id"]),
+                        crate::commands::s(&m["current_round"]),
+                        crate::commands::ago(&m["last_seen_at"])
+                    ),
+                    Style::default().fg(MUTED),
+                ),
+            ]);
+            f.render_widget(
+                Paragraph::new(vec![
+                    head,
+                    Line::from(Span::styled(
+                        format!(
+                            "owner {}   rounds served {}   samples verified {}   honesty {}",
+                            crate::commands::s(&m["owner"]),
+                            m["rounds_served"],
+                            m["samples_verified"],
+                            m["honesty"]
+                        ),
+                        Style::default().fg(MUTED),
+                    )),
+                ]),
+                chunks[0],
+            );
+            let met = &m["metrics"];
+            let cols = Layout::horizontal([
+                Constraint::Percentage(33),
+                Constraint::Percentage(33),
+                Constraint::Percentage(34),
+            ])
+            .split(chunks[1]);
+            for (i, (label, key)) in [("cpu", "cpu_pct"), ("ram", "ram_pct"), ("gpu", "gpu_pct")]
+                .iter()
+                .enumerate()
+            {
+                let pct = met[*key].as_f64().unwrap_or(0.0).clamp(0.0, 100.0);
+                let g = Gauge::default()
+                    .block(
+                        Block::default()
+                            .title(format!(" {label} "))
+                            .borders(Borders::ALL)
+                            .border_style(Style::default().fg(MUTED)),
+                    )
+                    .gauge_style(Style::default().fg(ACCENT))
+                    .percent(pct as u16);
+                f.render_widget(g, cols[i]);
+            }
+            let hist: Vec<u64> = m["history"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(|h| h["metrics"]["cpu_pct"].as_f64())
+                .map(|v| v as u64)
+                .collect();
+            let spark = Sparkline::default()
+                .data(&hist)
+                .style(Style::default().fg(MUTED))
+                .block(
+                    Block::default()
+                        .borders(Borders::TOP)
+                        .title(" cpu, last hour ")
+                        .border_style(Style::default().fg(MUTED)),
+                );
+            f.render_widget(spark, chunks[2]);
+            let lines: Vec<Line> = logs
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|l| {
+                    let at = crate::commands::s(&l["at"]);
+                    Line::from(vec![
+                        Span::styled(
+                            format!("{} ", at.get(11..19).unwrap_or(&at)),
+                            Style::default().fg(MUTED),
+                        ),
+                        Span::raw(crate::commands::s(&l["message"])),
+                    ])
+                })
+                .collect();
+            f.render_widget(
+                Paragraph::new(lines).block(
+                    Block::default()
+                        .borders(Borders::TOP)
+                        .title(" log ")
+                        .border_style(Style::default().fg(MUTED)),
+                ),
+                chunks[3],
+            );
+            let foot = match &error {
+                Some(e) => Span::styled(
+                    format!("  {e}"),
+                    Style::default().fg(status_color("offline")),
+                ),
+                None => Span::styled(
+                    format!("  q quit   ↻ {} s", interval.as_secs()),
+                    Style::default().fg(MUTED),
+                ),
+            };
+            f.render_widget(Paragraph::new(foot), chunks[4]);
+        })?;
+        if poll_quit(Duration::from_millis(250))? {
+            break;
+        }
+    }
+    Ok(())
+}
+
+/// `plasmon server status --watch`.
+pub fn server_watch(api: &Api, interval: Duration) -> Result<()> {
+    let mut term = Term::enter()?;
+    let mut last = Instant::now() - interval;
+    let mut st = Value::Null;
+    let mut error: Option<String> = None;
+    loop {
+        if last.elapsed() >= interval {
+            match api.get("/v1/server/status") {
+                Ok(v) => {
+                    st = v;
+                    error = None;
+                }
+                Err(e) => error = Some(e.to_string()),
+            }
+            last = Instant::now();
+        }
+        term.terminal.draw(|f| {
+            let chunks = Layout::vertical([
+                Constraint::Length(8),
+                Constraint::Min(3),
+                Constraint::Length(1),
+            ])
+            .split(f.area());
+            let running = st["scheduler"]["running"] == true;
+            let lines = vec![
+                Line::from(vec![
+                    Span::styled(
+                        "SERVER ",
+                        Style::default().fg(ACCENT).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::raw(format!(
+                        "version {}  mode {}  uptime {} s",
+                        crate::commands::s(&st["version"]),
+                        crate::commands::s(&st["mode"]),
+                        st["uptime_s"]
+                    )),
+                ]),
+                Line::from(vec![
+                    Span::raw("scheduler "),
+                    Span::styled(
+                        if running {
+                            "● running"
+                        } else {
+                            "✖ stopped"
+                        },
+                        Style::default().fg(status_color(if running {
+                            "training"
+                        } else {
+                            "error"
+                        })),
+                    ),
+                ]),
+                Line::from(format!(
+                    "db {} ({} ms)",
+                    crate::commands::s(&st["db"]["url"]),
+                    st["db"]["ping_ms"]
+                )),
+                Line::from(format!(
+                    "blobs {} B at {}",
+                    st["blobs"]["bytes"],
+                    crate::commands::s(&st["blobs"]["path"])
+                )),
+                Line::from(format!(
+                    "ledger entries {}  head {}…",
+                    st["ledger"]["entries"],
+                    crate::commands::s(&st["ledger"]["head"])
+                        .chars()
+                        .take(16)
+                        .collect::<String>()
+                )),
+                Line::from(format!(
+                    "users {}  machines {}  jobs {} ({} running)  sse clients {}",
+                    st["counts"]["users"],
+                    st["counts"]["machines"],
+                    st["counts"]["jobs"],
+                    st["counts"]["jobs_running"],
+                    st["sse_clients"]
+                )),
+            ];
+            f.render_widget(Paragraph::new(lines), chunks[0]);
+            let rows: Vec<Row> = st["round_timings"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .map(|t| {
+                    Row::new(vec![
+                        crate::commands::s(&t["job"]),
+                        t["round"].to_string(),
+                        t["aggregate_s"].to_string(),
+                        t["eval_s"].to_string(),
+                    ])
+                })
+                .collect();
+            let table = Table::new(
+                rows,
+                [
+                    Constraint::Length(18),
+                    Constraint::Length(7),
+                    Constraint::Length(12),
+                    Constraint::Length(8),
+                ],
+            )
+            .header(
+                Row::new(["job", "round", "aggregate s", "eval s"])
+                    .style(Style::default().fg(MUTED)),
+            )
+            .block(
+                Block::default()
+                    .borders(Borders::TOP)
+                    .title(" recent round timings ")
+                    .border_style(Style::default().fg(MUTED)),
+            );
+            f.render_widget(table, chunks[1]);
+            let foot = match &error {
+                Some(e) => Span::styled(
+                    format!("  {e}"),
+                    Style::default().fg(status_color("offline")),
+                ),
+                None => Span::styled(
+                    format!("  q quit   ↻ {} s", interval.as_secs()),
+                    Style::default().fg(MUTED),
+                ),
+            };
+            f.render_widget(Paragraph::new(foot), chunks[2]);
+        })?;
+        if poll_quit(Duration::from_millis(250))? {
+            break;
+        }
+    }
+    Ok(())
 }

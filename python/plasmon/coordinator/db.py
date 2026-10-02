@@ -87,6 +87,7 @@ class DeviceCode(Base):
 
 class Machine(Base):
     __tablename__ = "machines"
+    # status: training|idle|paused|unavailable|offline|error
     id: Mapped[str] = mapped_column(String(32), primary_key=True, default=lambda: new_id("mch"))
     node_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), index=True)
@@ -95,7 +96,7 @@ class Machine(Base):
     tags: Mapped[list[str]] = mapped_column(JSON, default=list)
     created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
     last_seen_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
-    status: Mapped[str] = mapped_column(String(16), default="offline")  # training|idle|paused|unavailable|offline|error
+    status: Mapped[str] = mapped_column(String(16), default="offline")
     status_detail: Mapped[str] = mapped_column(Text, default="")
     current_job_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
     current_round: Mapped[int | None] = mapped_column(Integer, nullable=True)
@@ -232,6 +233,18 @@ class AuditEvent(Base):
     action: Mapped[str] = mapped_column(String(64))
     target: Mapped[str] = mapped_column(String(128), default="")
     detail: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class Invite(Base):
+    __tablename__ = "invites"
+    code: Mapped[str] = mapped_column(String(64), primary_key=True)
+    role: Mapped[str] = mapped_column(String(16), default="member")
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime, default=now)
+    expires_at: Mapped[dt.datetime] = mapped_column(DateTime)
+    used_by: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    used_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
 class Setting(Base):

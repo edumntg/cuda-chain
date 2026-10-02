@@ -11,7 +11,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import __version__
-from . import api_auth, auth, db, ledger
+from . import api_auth, api_fleet, auth, db, ledger, policy
+from .config import OrgPolicy
 from .deps import Principal, get_session, get_state, principal_optional
 
 router = APIRouter(include_in_schema=False)
@@ -69,33 +70,34 @@ def need_user(p: Principal) -> db.User:
 def login_page(request: Request, next: str = "/", p: Principal = Depends(principal_optional), state=Depends(get_state)):
     if p.user:
         return RedirectResponse(next, status_code=303)
-    return render(request, "login.html", p, next=next, error=None, open_registration=state.cfg.auth.open_registration)
+    return render(request, "login.html", p, next=next, error=None, open_registration=state.cfg.auth.open_registration, sso=state.cfg.oidc.enabled)
 
 
 @router.post("/login")
 def login_submit(request: Request, email: str = Form(), password: str = Form(), next: str = Form("/"), session: Session = Depends(get_session), state=Depends(get_state)):
     user = session.scalar(select(db.User).where(db.User.email == email.lower().strip()))
     if user is None or user.disabled or not auth.verify_password(user.password_hash, password):
-        return render(request, "login.html", Principal(), next=next, error="Wrong email or password.", open_registration=state.cfg.auth.open_registration)
+        return render(request, "login.html", Principal(), next=next, error="Wrong email or password.", open_registration=state.cfg.auth.open_registration, sso=state.cfg.oidc.enabled)
     resp = RedirectResponse(next if next.startswith("/") else "/", status_code=303)
     state.sessions.write(resp, user.id, secure=request.url.scheme == "https")
     return resp
 
 
 @router.get("/register", response_class=HTMLResponse)
-def register_page(request: Request, p: Principal = Depends(principal_optional), state=Depends(get_state), session: Session = Depends(get_session)):
+def register_page(request: Request, invite: str = "", p: Principal = Depends(principal_optional), state=Depends(get_state), session: Session = Depends(get_session)):
     first = session.scalar(select(func.count()).select_from(db.User)) == 0
-    if not first and not state.cfg.auth.open_registration:
-        return render(request, "register.html", p, error="Registration is closed. Ask an admin for an invite.", closed=True, first=False)
-    return render(request, "register.html", p, error=None, closed=False, first=first)
+    closed = not first and not state.cfg.auth.open_registration
+    if closed and not invite:
+        return render(request, "register.html", p, error="Registration is closed. Ask an admin for an invite link.", closed=True, first=False, invite="")
+    return render(request, "register.html", p, error=None, closed=False, first=first, invite=invite)
 
 
 @router.post("/register")
-def register_submit(request: Request, email: str = Form(), password: str = Form(), name: str = Form(""), session: Session = Depends(get_session), state=Depends(get_state)):
+def register_submit(request: Request, email: str = Form(), password: str = Form(), name: str = Form(""), invite: str = Form(""), session: Session = Depends(get_session), state=Depends(get_state)):
     try:
-        user = api_auth.register_user(session, state, email, password, name)
+        user = api_auth.register_user(session, state, email, password, name, invite or None)
     except HTTPException as e:
-        return render(request, "register.html", Principal(), error=e.detail, closed=False, first=False)
+        return render(request, "register.html", Principal(), error=e.detail, closed=False, first=False, invite=invite)
     resp = RedirectResponse("/", status_code=303)
     state.sessions.write(resp, user.id, secure=request.url.scheme == "https")
     return resp
@@ -248,7 +250,24 @@ def _machine_ctx(session: Session, m: db.Machine) -> dict:
 @router.get("/machine/{node_id}", response_class=HTMLResponse)
 def machine_page(request: Request, node_id: str, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
     user = need_user(p)
-    return render(request, "machine.html", p, **_machine_ctx(session, _machine_for(session, user, node_id)))
+    return render(request, "machine.html", p, can_control=auth.role_at_least(user.role, "operator"), **_machine_ctx(session, _machine_for(session, user, node_id)))
+
+
+@router.post("/machine/{node_id}/{action}")
+def machine_action(node_id: str, action: str, p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    user = need_user(p)
+    if not auth.role_at_least(user.role, "operator"):
+        raise HTTPException(403, "operator role needed")
+    body = api_fleet.ControlIn(reason="from the dashboard")
+    if action == "pause":
+        api_fleet.pause(node_id, body, user, session, state)
+    elif action == "resume":
+        api_fleet.resume(node_id, user, session, state)
+    elif action == "drain":
+        api_fleet.drain(node_id, body, user, session, state)
+    else:
+        raise HTTPException(404, "unknown action")
+    return RedirectResponse(f"/machine/{node_id}", status_code=303)
 
 
 @router.get("/partials/machine/{node_id}", response_class=HTMLResponse)
@@ -291,3 +310,64 @@ def ledger_page(request: Request, p: Principal = Depends(principal_optional), se
     entries = session.scalars(select(db.LedgerEntry).order_by(db.LedgerEntry.seq.desc()).limit(200)).all()
     ok, count, problem = ledger.verify(session, state.server.node_id)
     return render(request, "ledger.html", p, entries=entries, ok=ok, count=count, problem=problem, server_node_id=state.server.node_id)
+
+
+@router.get("/users", response_class=HTMLResponse)
+def users_page(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    user = need_user(p)
+    if not auth.role_at_least(user.role, "admin"):
+        raise HTTPException(403, "the users page needs the admin role")
+    users = api_fleet.list_users(user, session)
+    invites = api_fleet.list_invites(user, session)
+    audit = api_fleet.audit(24, 50, user, session)
+    return render(request, "users.html", p, users=users, invites=invites, audit=audit, base=state.public_url(request), result=request.query_params.get("result", ""))
+
+
+@router.post("/users/invite")
+def users_invite(request: Request, email: str = Form(""), role: str = Form("member"), p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    user = need_user(p)
+    out = api_fleet.invite(api_fleet.InviteIn(email=email or None, role=role), user, session, state)
+    return RedirectResponse(f"/users?result=invite:{out['code']}", status_code=303)
+
+
+@router.post("/users/{user_id}/role")
+def users_role(user_id: str, role: str = Form(), p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    user = need_user(p)
+    try:
+        api_fleet.set_role(user_id, api_fleet.RoleIn(role=role), user, session)
+    except HTTPException as e:
+        return RedirectResponse(f"/users?result=error:{e.detail}", status_code=303)
+    return RedirectResponse("/users?result=role", status_code=303)
+
+
+@router.post("/users/{user_id}/disable")
+def users_disable(user_id: str, disabled: str = Form("1"), p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    user = need_user(p)
+    try:
+        api_fleet.disable_user(user_id, api_fleet.DisableIn(disabled=disabled == "1"), user, session)
+    except HTTPException as e:
+        return RedirectResponse(f"/users?result=error:{e.detail}", status_code=303)
+    return RedirectResponse("/users?result=disabled", status_code=303)
+
+
+@router.get("/settings", response_class=HTMLResponse)
+def settings_page(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    user = need_user(p)
+    if not auth.role_at_least(user.role, "admin"):
+        raise HTTPException(403, "the settings page needs the admin role")
+    current = policy.load(session, state.cfg.policy.defaults)
+    return render(request, "settings.html", p, policy=current, days=policy.DAYS, result=request.query_params.get("result", ""), cfg=state.cfg)
+
+
+@router.post("/settings/policy")
+def settings_policy(request: Request, windows_text: str = Form(""), pause_on_battery: str = Form(""), drain_at_window_end: str = Form(""), p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    user = need_user(p)
+    if not auth.role_at_least(user.role, "admin"):
+        raise HTTPException(403, "admin role needed")
+    try:
+        windows = [policy.parse_hours(line.strip()) for line in windows_text.splitlines() if line.strip()]
+        new = OrgPolicy(windows=windows, pause_on_battery=pause_on_battery == "on", drain_at_window_end=drain_at_window_end == "on")
+    except (ValueError, IndexError) as e:
+        return RedirectResponse(f"/settings?result=error:{e}", status_code=303)
+    api_fleet.put_policy(new, user, session, state)
+    return RedirectResponse("/settings?result=saved", status_code=303)

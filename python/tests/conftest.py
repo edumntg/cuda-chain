@@ -15,6 +15,21 @@ from plasmon.coordinator.config import AuthConfig, PolicyConfig, ServerConfig
 from plasmon.train import data
 
 
+def _test_db_url() -> str | None:
+    """PLASMON_TEST_DB_URL runs the suite against PostgreSQL. The schema is dropped first."""
+    import os
+
+    url = os.environ.get("PLASMON_TEST_DB_URL")
+    if url:
+        from plasmon.coordinator import db
+        from sqlalchemy import create_engine
+
+        engine = create_engine(url)
+        db.Base.metadata.drop_all(engine)
+        engine.dispose()
+    return url
+
+
 def free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -30,6 +45,7 @@ def server(tmp_path_factory):
         host="127.0.0.1",
         port=port,
         data_dir=str(root),
+        db_url=_test_db_url(),
         public_url=f"http://127.0.0.1:{port}",
         auth=AuthConfig(open_registration=True),
         policy=PolicyConfig(heartbeat_interval_s=2, idle_poll_interval_s=1),

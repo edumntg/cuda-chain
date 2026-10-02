@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Any
 
 import torch
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from ..core import assignment, identity
@@ -22,7 +22,6 @@ from ..core import frame as fr
 from ..core.jobspec import JobSpec
 from ..train import compression, data, diloco, weights
 from . import db, ledger
-from .blobs import LocalBlobStore
 from .events import Bus
 
 log = logging.getLogger("plasmon.engine")
@@ -55,11 +54,13 @@ class Assignment:
 
 
 class Engine:
-    def __init__(self, blobs: LocalBlobStore, bus: Bus, server: identity.Identity, heartbeat_interval_s: int):
+    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None):
         self.blobs = blobs
         self.bus = bus
         self.server = server
         self.heartbeat_interval_s = heartbeat_interval_s
+        self.retention = retention
+        self._last_cleanup = 0.0
         self._eval_cache: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
         self._lock = threading.RLock()
 
@@ -268,6 +269,7 @@ class Engine:
     def tick(self, session: Session) -> None:
         with self._lock:
             self._expire_offline_machines(session)
+            self._cleanup(session)
             for job in session.scalars(select(db.Job).where(db.Job.status == "running")).all():
                 try:
                     self._tick_job(session, job)
@@ -281,6 +283,17 @@ class Engine:
                         job.finished_at = db.now()
                         session.commit()
                         self.bus.publish(f"job:{job.id}", {"event": "failed", "job": job.id})
+
+    def _cleanup(self, session: Session) -> None:
+        """Delete old heartbeats, logs and device codes on the retention schedule."""
+        if self.retention is None or time.time() - self._last_cleanup < self.retention.cleanup_interval_s:
+            return
+        self._last_cleanup = time.time()
+        now = db.now()
+        session.execute(delete(db.Heartbeat).where(db.Heartbeat.at < now - dt.timedelta(hours=self.retention.heartbeats_hours)))
+        session.execute(delete(db.LogLine).where(db.LogLine.at < now - dt.timedelta(days=self.retention.logs_days)))
+        session.execute(delete(db.DeviceCode).where(db.DeviceCode.expires_at < now))
+        session.commit()
 
     def _expire_offline_machines(self, session: Session) -> None:
         cutoff = db.now() - dt.timedelta(seconds=3 * self.heartbeat_interval_s + 10)

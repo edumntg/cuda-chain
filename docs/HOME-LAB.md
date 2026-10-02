@@ -157,7 +157,22 @@ python3 examples/mnist/eval.py mnist.safetensors
 Expected output after twenty rounds: an accuracy between 96 % and 98 % on the 10,000 test
 images.
 
-## Part F: run it again
+## Part F: run the trainers at login (optional)
+
+On each computer, replace the `trainer start` window with a service that starts at login:
+
+```bash
+python3 -m plasmon trainer enable --name mac           # Mac: launchd agent
+```
+
+```powershell
+py -m plasmon trainer enable --name windows             # Windows: scheduled task
+```
+
+Add `--hours "daily 22:00-07:00"` to train only at night. Remove the service with
+`trainer disable`.
+
+## Part G: run it again
 
 Submit the same job again. The upload step prints `uploading 1 of 62 blobs`: the shards
 are already on the server, only the job record is new.

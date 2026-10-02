@@ -65,13 +65,30 @@ enum Command {
         #[command(subcommand)]
         cmd: ServerCmd,
     },
-    /// Machines you can see.
+    /// Machines you can see, and control of them (operator role).
     Fleet {
         #[arg(long)]
         status: Option<String>,
         /// Live table, refreshed every two seconds.
         #[arg(short, long)]
         watch: bool,
+        #[command(subcommand)]
+        cmd: Option<FleetCmd>,
+    },
+    /// People and roles (admin role).
+    Users {
+        #[command(subcommand)]
+        cmd: UsersCmd,
+    },
+    /// Who did what, when (operator role).
+    Audit {
+        #[arg(long, default_value_t = 24)]
+        since_hours: u32,
+    },
+    /// Org trainer policy.
+    Policy {
+        #[command(subcommand)]
+        cmd: PolicyCmd,
     },
     /// The hash-chained ledger.
     Ledger {
@@ -117,6 +134,72 @@ enum JobCmd {
 }
 
 #[derive(Subcommand)]
+enum FleetCmd {
+    /// Stop a machine from taking rounds, now.
+    Pause {
+        node: String,
+        #[arg(long, default_value = "")]
+        reason: String,
+    },
+    /// Let a paused or draining machine take rounds again.
+    Resume { node: String },
+    /// Finish the current round, then stop taking rounds.
+    Drain {
+        node: String,
+        #[arg(long, default_value = "")]
+        reason: String,
+    },
+    /// One machine: status, metrics, rounds, log tail. Live with --watch.
+    Show {
+        node: String,
+        #[arg(short, long)]
+        watch: bool,
+    },
+    /// A machine's log. Follow with -f.
+    Logs {
+        node: String,
+        #[arg(short, long)]
+        follow: bool,
+        #[arg(long)]
+        grep: Option<String>,
+    },
+}
+
+#[derive(Subcommand)]
+enum UsersCmd {
+    List,
+    /// Create an invite link.
+    Invite {
+        #[arg(long)]
+        email: Option<String>,
+        #[arg(long, default_value = "member")]
+        role: String,
+        #[arg(long, default_value_t = 7)]
+        days: u32,
+    },
+    SetRole {
+        email: String,
+        role: String,
+    },
+    Disable {
+        email: String,
+    },
+    Enable {
+        email: String,
+    },
+}
+
+#[derive(Subcommand)]
+enum PolicyCmd {
+    Show,
+    /// Set availability windows and the battery rule. Runs through the Python engine.
+    Set {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+}
+
+#[derive(Subcommand)]
 enum TrainerCmd {
     /// Enrol this machine and train rounds until stopped.
     Start {
@@ -126,21 +209,27 @@ enum TrainerCmd {
         device: String,
         #[arg(long)]
         max_hours: Option<f64>,
+        /// Only train inside this window, e.g. "weekdays 19:00-08:00". Repeatable.
+        #[arg(long)]
+        hours: Vec<String>,
+        #[arg(long)]
+        never_on_battery: bool,
     },
+    /// Run the trainer at login as a user service (systemd, launchd or a scheduled task).
+    Enable {
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
+    },
+    /// Remove the user service.
+    Disable,
 }
 
 #[derive(Subcommand)]
 enum ServerCmd {
-    /// Write plasmon-server.yaml.
+    /// Write plasmon-server.yaml, or a Compose bundle with --bundle compose. All flags pass to the engine.
     Init {
-        #[arg(long, default_value = "home")]
-        mode: String,
-        #[arg(long, default_value_t = 7117)]
-        port: u16,
-        #[arg(long, default_value = "home")]
-        org: String,
-        #[arg(long)]
-        public_url: Option<String>,
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        args: Vec<String>,
     },
     /// Start the coordinator.
     Start,
@@ -151,8 +240,11 @@ enum ServerCmd {
         #[arg(long)]
         password: Option<String>,
     },
-    /// Coordinator health (operator role).
-    Status,
+    /// Coordinator health (operator role). Live with --watch.
+    Status {
+        #[arg(short, long)]
+        watch: bool,
+    },
 }
 
 #[derive(Subcommand)]
@@ -233,6 +325,8 @@ fn run() -> Result<i32> {
                 name,
                 device,
                 max_hours,
+                hours,
+                never_on_battery,
             } => {
                 let mut args = vec![
                     "trainer".to_string(),
@@ -246,30 +340,26 @@ fn run() -> Result<i32> {
                 if let Some(h) = max_hours {
                     args.extend(["--max-hours".to_string(), h.to_string()]);
                 }
+                for h in hours {
+                    args.extend(["--hours".to_string(), h]);
+                }
+                if never_on_battery {
+                    args.push("--never-on-battery".to_string());
+                }
                 python::run(&with_server_vec(server, args, false))
             }
+            TrainerCmd::Enable { args } => {
+                let mut full = vec!["trainer".to_string(), "enable".to_string()];
+                full.extend(args);
+                python::run(&full)
+            }
+            TrainerCmd::Disable => python::run(&["trainer".to_string(), "disable".to_string()]),
         },
         Some(Command::Server { cmd }) => match cmd {
-            ServerCmd::Init {
-                mode,
-                port,
-                org,
-                public_url,
-            } => {
-                let mut args = vec![
-                    "server".into(),
-                    "init".into(),
-                    "--mode".into(),
-                    mode,
-                    "--port".into(),
-                    port.to_string(),
-                    "--org".into(),
-                    org,
-                ];
-                if let Some(u) = public_url {
-                    args.extend(["--public-url".to_string(), u]);
-                }
-                python::run(&args)
+            ServerCmd::Init { args } => {
+                let mut full = vec!["server".to_string(), "init".to_string()];
+                full.extend(args);
+                python::run(&full)
             }
             ServerCmd::Start => python::run(&["server".to_string(), "start".to_string()]),
             ServerCmd::Bootstrap { owner, password } => {
@@ -284,15 +374,65 @@ fn run() -> Result<i32> {
                 }
                 python::run(&args)
             }
-            ServerCmd::Status => commands::server_status(server, cli.json).map(|_| 0),
-        },
-        Some(Command::Fleet { status, watch }) => {
-            if watch && !plain && !cli.json {
-                tui::fleet_watch(&commands::api(server)?, Duration::from_secs(2)).map(|_| 0)
-            } else {
-                commands::fleet(server, status.as_deref(), cli.json).map(|_| 0)
+            ServerCmd::Status { watch } => {
+                if watch && !plain && !cli.json {
+                    tui::server_watch(&commands::api(server)?, Duration::from_secs(3)).map(|_| 0)
+                } else {
+                    commands::server_status(server, cli.json).map(|_| 0)
+                }
             }
+        },
+        Some(Command::Fleet { status, watch, cmd }) => match cmd {
+            None => {
+                if watch && !plain && !cli.json {
+                    tui::fleet_watch(&commands::api(server)?, Duration::from_secs(2)).map(|_| 0)
+                } else {
+                    commands::fleet(server, status.as_deref(), cli.json).map(|_| 0)
+                }
+            }
+            Some(FleetCmd::Pause { node, reason }) => {
+                commands::fleet_control(server, &node, "pause", &reason).map(|_| 0)
+            }
+            Some(FleetCmd::Resume { node }) => {
+                commands::fleet_control(server, &node, "resume", "").map(|_| 0)
+            }
+            Some(FleetCmd::Drain { node, reason }) => {
+                commands::fleet_control(server, &node, "drain", &reason).map(|_| 0)
+            }
+            Some(FleetCmd::Show { node, watch }) => {
+                if watch && !plain && !cli.json {
+                    tui::machine_watch(&commands::api(server)?, &node, Duration::from_secs(2))
+                        .map(|_| 0)
+                } else {
+                    commands::fleet_show(server, &node, cli.json).map(|_| 0)
+                }
+            }
+            Some(FleetCmd::Logs { node, follow, grep }) => {
+                commands::fleet_logs(server, &node, follow, grep.as_deref()).map(|_| 0)
+            }
+        },
+        Some(Command::Users { cmd }) => match cmd {
+            UsersCmd::List => commands::users_list(server, cli.json).map(|_| 0),
+            UsersCmd::Invite { email, role, days } => {
+                commands::users_invite(server, email.as_deref(), &role, days, cli.json).map(|_| 0)
+            }
+            UsersCmd::SetRole { email, role } => {
+                commands::users_set_role(server, &email, &role).map(|_| 0)
+            }
+            UsersCmd::Disable { email } => commands::users_disable(server, &email, true).map(|_| 0),
+            UsersCmd::Enable { email } => commands::users_disable(server, &email, false).map(|_| 0),
+        },
+        Some(Command::Audit { since_hours }) => {
+            commands::audit(server, since_hours, cli.json).map(|_| 0)
         }
+        Some(Command::Policy { cmd }) => match cmd {
+            PolicyCmd::Show => commands::policy_show(server, cli.json).map(|_| 0),
+            PolicyCmd::Set { args } => {
+                let mut full = vec!["policy".to_string(), "set".to_string()];
+                full.extend(args);
+                python::run(&with_server_vec(server, full, false))
+            }
+        },
         Some(Command::Ledger { cmd }) => match cmd {
             LedgerCmd::Verify => commands::ledger_verify(server, cli.json),
         },

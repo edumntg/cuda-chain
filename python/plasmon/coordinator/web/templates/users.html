@@ -1,0 +1,49 @@
+{% extends "base.html" %}{% set active = 'users' %}{% block title %}Users{% endblock %}
+{% block content %}
+<h1>Users</h1>
+{% if result.startswith('invite:') %}<p class="ok" role="status">Invite created. Send this link: <code>{{ base }}/register?invite={{ result[7:] }}</code></p>
+{% elif result.startswith('error:') %}<p class="error" role="alert">{{ result[6:] }}</p>
+{% elif result %}<p class="ok" role="status">Saved.</p>{% endif %}
+<table>
+  <thead><tr><th>email</th><th>name</th><th>role</th><th class="num">machines</th><th>joined</th><th>actions</th></tr></thead>
+  <tbody>
+  {% for u in users %}
+    <tr{% if u.disabled %} class="muted"{% endif %}>
+      <td>{{ u.email }}{% if u.disabled %} <span class="small">(disabled)</span>{% endif %}</td>
+      <td>{{ u.name }}</td>
+      <td>
+        {% if u.id != user.id %}
+        <form method="post" action="/users/{{ u.id }}/role" class="inline-form">
+          <select name="role" aria-label="role for {{ u.email }}">
+            {% for r in ['owner','admin','operator','member','viewer'] %}<option value="{{ r }}" {% if r == u.role %}selected{% endif %} {% if r == 'owner' and user.role != 'owner' %}disabled{% endif %}>{{ r }}</option>{% endfor %}
+          </select>
+          <button type="submit" class="secondary">Set role</button>
+        </form>
+        {% else %}{{ u.role }} <span class="muted small">(you)</span>{% endif %}
+      </td>
+      <td class="num">{{ u.machines }}</td>
+      <td>{{ u.created_at|ago }} ago</td>
+      <td>{% if u.id != user.id and (u.role != 'owner' or user.role == 'owner') %}
+        <form method="post" action="/users/{{ u.id }}/disable" class="inline-form"><input type="hidden" name="disabled" value="{{ '0' if u.disabled else '1' }}"><button type="submit" class="{{ 'secondary' if u.disabled else 'danger' }}">{{ 'Enable' if u.disabled else 'Disable' }}</button></form>
+      {% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<h2>Invite someone</h2>
+<form method="post" action="/users/invite" class="row-form">
+  <label>Email (optional) <input name="email" type="email" placeholder="person@company.com"></label>
+  <label>Role <select name="role">{% for r in ['member','operator','admin','viewer'] %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select></label>
+  <button type="submit">Create invite link</button>
+</form>
+{% if invites %}
+<h3>Open invites</h3>
+<table><thead><tr><th>link</th><th>role</th><th>for</th><th>expires</th></tr></thead>
+<tbody>{% for i in invites %}<tr><td><code>{{ base }}/register?invite={{ i.code }}</code></td><td>{{ i.role }}</td><td>{{ i.email or 'anyone' }}</td><td>{{ i.expires_at|ago }}</td></tr>{% endfor %}</tbody></table>
+{% endif %}
+<h2>Audit log, last 24 hours</h2>
+{% if audit %}
+<table><thead><tr><th>when</th><th>who</th><th>action</th><th>target</th><th>detail</th></tr></thead>
+<tbody>{% for a in audit %}<tr><td>{{ a.at|ago }} ago</td><td>{{ a.actor }}</td><td>{{ a.action }}</td><td class="small">{{ a.target }}</td><td class="small">{{ a.detail }}</td></tr>{% endfor %}</tbody></table>
+{% else %}<p class="empty">No admin actions in the last 24 hours.</p>{% endif %}
+{% endblock %}

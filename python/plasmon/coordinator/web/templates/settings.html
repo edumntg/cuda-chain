@@ -1,0 +1,27 @@
+{% extends "base.html" %}{% set active = 'settings' %}{% block title %}Settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+{% if result == 'saved' %}<p class="ok" role="status">Policy saved. Trainers apply it at their next heartbeat.</p>
+{% elif result.startswith('error:') %}<p class="error" role="alert">{{ result[6:] }}</p>{% endif %}
+<h2>Trainer policy for {{ org }}</h2>
+<p class="muted">Defaults for every machine. A person can make their own machine stricter, not looser.</p>
+<form method="post" action="/settings/policy" class="stack wide">
+  <label>Availability windows, one per line. Empty means always.
+    <textarea name="windows_text" rows="4" placeholder="weekdays 19:00-08:00&#10;weekends 00:00-23:59">{% for w in policy.windows %}{{ w.days|join(',') }} {{ w.start }}-{{ w.end }}
+{% endfor %}</textarea>
+  </label>
+  <p class="muted small">Formats: <code>weekdays 19:00-08:00</code>, <code>weekends 00:00-23:59</code>, <code>mon,wed,fri 20:00-07:00</code>, <code>daily 22:00-06:00</code>. An end before the start crosses midnight.</p>
+  <label class="check"><input type="checkbox" name="pause_on_battery" {% if policy.pause_on_battery %}checked{% endif %}> Never train on battery</label>
+  <label class="check"><input type="checkbox" name="drain_at_window_end" {% if policy.drain_at_window_end %}checked{% endif %}> At the end of a window, finish the current round and then stop</label>
+  <button type="submit">Save policy</button>
+</form>
+<h2>Server</h2>
+<dl class="kv">
+  <div><dt>mode</dt><dd>{{ cfg.mode }}</dd></div>
+  <div><dt>registration</dt><dd>{{ 'open to anyone who can reach this address' if cfg.auth.open_registration else 'invite only' }}</dd></div>
+  <div><dt>single sign-on</dt><dd>{% if cfg.oidc.enabled %}{{ cfg.oidc.issuer }}{% else %}not configured{% endif %}</dd></div>
+  <div><dt>blob store</dt><dd>{{ cfg.blobs.kind }}{% if cfg.blobs.bucket %} · {{ cfg.blobs.bucket }}{% endif %}</dd></div>
+  <div><dt>retention</dt><dd>heartbeats {{ cfg.retention.heartbeats_hours }} h · logs {{ cfg.retention.logs_days }} d</dd></div>
+</dl>
+<p class="muted small">These values come from <code>plasmon-server.yaml</code>. Edit the file and restart the server to change them.</p>
+{% endblock %}

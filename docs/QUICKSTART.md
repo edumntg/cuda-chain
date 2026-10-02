@@ -20,7 +20,7 @@ curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/instal
 python -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
 ```
 
-Windows: `powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"`
+Windows, in PowerShell: `irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex`
 and `py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"`.
 
 On Linux, install PyTorch for CPU first to avoid the CUDA download:

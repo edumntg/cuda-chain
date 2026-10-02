@@ -115,12 +115,16 @@ Keep this window open. The Mac now waits for a round.
 
 ### B1. Install the CLI and the engine
 
-Open PowerShell:
+Open a normal PowerShell window (not "Run as administrator": the CLI installs into your
+own user folder):
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"
+irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex
 py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
 ```
+
+From `cmd` instead of PowerShell, run the first line as
+`powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"`.
 
 If `git` is not installed, install it from https://git-scm.com first. Open a new
 PowerShell window, then check:
@@ -279,6 +283,7 @@ the two runs on the **Jobs** page.
 | Problem | Cause | Solution |
 |---|---|---|
 | `plasmon: command not found` after the install | The install directory is not on the PATH yet | Open a new terminal window. The installer prints the PATH line to add if needed. |
+| `Program 'powershell.exe' failed to run: Access is denied` | A second PowerShell was started from inside PowerShell, often in an elevated window | Run the `irm ... | iex` line directly, in a normal PowerShell window. |
 | `the plasmon Python package was not found` | The engine is not installed for the Python the CLI found | Run the `pip install` line again. Set `PLASMON_PYTHON` to the right interpreter if you have several. |
 | The browser says "didn't send any data" or `ERR_EMPTY_RESPONSE` on an address like `172.16.30.1` | That address is a VPN tunnel or a virtual machine adapter, not the Wi-Fi | On the Mac use `http://localhost:7117`. From the PC use the `en0` address (`ipconfig getifaddr en0`). With a corporate VPN, the PC may need the VPN off, or the Mac's Wi-Fi address published with `--public-url`. |
 | `cannot reach http://192.168.1.20:7117` on the PC | Firewall on the Mac, or a different network | On the Mac, System Settings, Network, Firewall: allow Python. Make sure both computers use the same Wi-Fi. |

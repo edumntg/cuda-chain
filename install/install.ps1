@@ -1,5 +1,6 @@
 # Install the plasmon CLI binary from GitHub Releases. Windows, PowerShell 5.1 or newer.
-#   powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"
+#   In PowerShell:  irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex
+#   From cmd:       powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"
 $ErrorActionPreference = "Stop"
 $repo = "edumntg/plasmon"
 $version = if ($env:PLASMON_VERSION) { $env:PLASMON_VERSION } else { "latest" }

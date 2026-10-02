@@ -484,7 +484,7 @@ wallet. Tokens are revocable from the dashboard.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.sh | sh      # Linux, macOS
-powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"   # Windows
+irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex                       # Windows, in PowerShell
 python -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"           # the engine (server, trainer)
 ```
 

@@ -176,16 +176,17 @@
 
   // ----- network ----------------------------------------------------------------------------
   function statusOfMachine(m) { return m.status === "idle" && m.current_job_id ? "training" : m.status; }
-  function machineNode(parent, m) {
+  function machineNode(parent, m, opts) {
+    opts = opts || {};
     var met = m.metrics || {}, gpu = (m.hardware || {}).gpu || {}, hasGpu = gpu.kind && gpu.kind !== "none";
-    var st = statusOfMachine(m);
-    var sub = st === "training" ? ("round " + m.current_round + (met.steps_total ? " · " + met.step + "/" + met.steps_total : "")) : (m.status_detail || (st === "idle" ? "waiting for a round" : st));
+    var st = opts.status || statusOfMachine(m);
+    var sub = opts.sub || (st === "training" ? ("round " + m.current_round + (met.steps_total ? " · " + met.step + "/" + met.steps_total : "")) : (m.status_detail || (st === "idle" ? "waiting for a round" : st)));
     var n = nodeEl(parent, "m:" + m.node_id, "/machine/" + m.node_id);
     setNode(n, {
       status: st, icon: osIcon(m), title: m.name || m.node_id.slice(0, 8), sub: sub, href: "/machine/" + m.node_id,
       footLeft: hasGpu ? (gpu.kind === "mps" ? "mps" : "cuda") : "cpu",
       kv: hasGpu ? [["CPU", pct(met.cpu_pct)], ["GPU", pct(met.gpu_pct)]] : [["CPU", pct(met.cpu_pct)], ["Mem", pct(met.ram_pct)]],
-      tooltip: (m.name || "") + " · " + st + (hasGpu ? " · " + gpu.name : "") + (m.owner ? " · " + m.owner : ""), ports: ["top"],
+      tooltip: opts.tooltip || ((m.name || "") + " · " + st + (hasGpu ? " · " + gpu.name : "") + (m.owner ? " · " + m.owner : "")), ports: ["top"],
     });
     return n;
   }
@@ -267,14 +268,28 @@
     while (sq.children.length > shown.length) sq.lastChild.remove();
     shown.forEach(function (m, i) { var s = sq.children[i]; if (!s) { s = h("span", "ps-square"); sq.appendChild(s); } s.className = "ps-square status-" + statusOfMachine(m); s.title = (m.name || "") + ": " + statusOfMachine(m); });
 
-    // groups: one per running job, then available, then offline
-    var keep = {}, groups = [];
-    var byJob = {};
-    machines.forEach(function (m) { if (m.current_job_id) (byJob[m.current_job_id] = byJob[m.current_job_id] || []).push(m); });
+    // groups: one per running job with the machines training it now or in its last two rounds,
+    // then the available machines, then the offline or failed ones
+    var keep = {}, groups = [], claimed = {}, fleetById = {}, membersOf = {};
+    machines.forEach(function (m) { fleetById[m.node_id] = m; });
+    jobs.forEach(function (j) { membersOf[j.id] = []; });
+    machines.forEach(function (m) {
+      if (m.current_job_id && membersOf[m.current_job_id]) { membersOf[m.current_job_id].push({ m: m, live: true }); claimed[m.node_id] = true; }
+    });
     jobs.forEach(function (j) {
-      var id = "job:" + j.id, members = byJob[j.id] || [];
+      (j.trainers || []).forEach(function (t) {
+        if (claimed[t.node]) return;
+        var inFlight = t.current && (t.status === "assigned" || t.status === "committed");
+        var m = fleetById[t.node] || { node_id: t.node, name: t.name, status: inFlight ? "training" : "idle", hardware: {}, metrics: {}, status_detail: "" };
+        membersOf[j.id].push({ m: m, live: inFlight, round: t.round });
+        claimed[t.node] = true;
+      });
+    });
+    jobs.forEach(function (j) {
+      var id = "job:" + j.id, members = membersOf[j.id];
       var g = groupEl(groupsRow, id);
-      var active = members.some(function (m) { return statusOfMachine(m) === "training"; });
+      var training = members.filter(function (x) { return x.live || (x.m.current_job_id === j.id && statusOfMachine(x.m) === "training"); }).map(function (x) { return x.m.node_id; });
+      var active = training.length > 0;
       setGroup(g, { status: active ? "training" : "idle", name: j.name, state: "round " + j.round + "/" + j.total_rounds, href: "/jobs/" + j.id, tooltip: j.name + ": eval loss " + fmt(j.eval_loss, 3) });
       var nodes = g.querySelector(".ps-group-nodes"), keepM = {};
       if (!members.length) {
@@ -282,13 +297,17 @@
         setNode(w, { status: "unavailable", icon: "clock", title: "waiting", sub: j.waiting_reason || "no trainer yet", tooltip: j.waiting_reason || "no trainer yet", href: "/jobs/" + j.id, kv: [["round", j.round + "/" + j.total_rounds]] });
         keepM["wait:" + j.id] = true;
       }
-      members.forEach(function (m) { machineNode(nodes, m); keepM["m:" + m.node_id] = true; });
+      members.forEach(function (x) {
+        var isTraining = training.indexOf(x.m.node_id) >= 0;
+        machineNode(nodes, x.m, isTraining ? {} : { status: "idle", sub: "between rounds", tooltip: (x.m.name || "") + " · between rounds" + (x.round != null ? " · round " + x.round + " done" : "") });
+        keepM["m:" + x.m.node_id] = true;
+      });
       prune(nodes, keepM);
       keep[id] = true;
-      groups.push({ id: id, cls: active ? "ps-wire-active ps-ants" : "ps-wire-control", members: members });
+      groups.push({ id: id, cls: active ? "ps-wire-active ps-ants" : "ps-wire-control", members: members.map(function (x) { return x.m; }), training: training });
     });
-    var available = machines.filter(function (m) { return !m.current_job_id && ["idle", "paused", "unavailable"].indexOf(m.status) >= 0; });
-    var down = machines.filter(function (m) { return !m.current_job_id && ["offline", "error"].indexOf(m.status) >= 0; });
+    var available = machines.filter(function (m) { return !claimed[m.node_id] && ["idle", "paused", "unavailable"].indexOf(m.status) >= 0; });
+    var down = machines.filter(function (m) { return !claimed[m.node_id] && ["offline", "error"].indexOf(m.status) >= 0; });
     [["available", available, available.filter(function (m) { return m.status === "idle"; }).length + " idle", "idle", "ps-wire-idle"],
      ["offline", down, down.length + " down", "offline", "ps-wire-down"]].forEach(function (spec) {
       var id = spec[0], list = spec[1];
@@ -312,7 +331,7 @@
     prune(groupsRow, keep);
 
     // wires: trunk, bus, one drop per group, one short drop per machine inside its group
-    var anyTraining = machines.some(function (m) { return statusOfMachine(m) === "training"; });
+    var anyTraining = groups.some(function (g) { return (g.training || []).length > 0; });
     var wires = [];
     function layout(P) {
       var c0 = P("coord:bottom");
@@ -339,7 +358,7 @@
         return { a: a, busY: a.y + 8, rows: rows, left: b.left + 6, right: b.right - 6 };
       }
       g.members.forEach(function (m) {
-        wires.push({ id: "in:" + g.id + ":" + m.node_id, cls: wireClass(statusOfMachine(m)), d: function (P) {
+        wires.push({ id: "in:" + g.id + ":" + m.node_id, cls: (g.training || []).indexOf(m.node_id) >= 0 ? "ps-wire-active ps-ants" : wireClass(statusOfMachine(m)), d: function (P) {
           var L = inner(P), pt = P("m:" + m.node_id + ":top"); if (!L || !pt) return null;
           var d = dropPath(L.rows, L.busY, pt, L.left, L.right, 5, 5);
           return poly([L.a, { x: L.a.x, y: L.busY }].concat(d.pts));
@@ -380,22 +399,26 @@
     var current = job.rounds.length ? job.rounds[job.rounds.length - 1] : null, ri = current ? current.index : 0;
     var open = !!(current && current.status === "open");
     var ups = updates.filter(function (u) { return u.round === ri; });
+    // a round that just opened has no updates yet: keep showing who trained the previous one
+    var stale = false;
+    if (!ups.length && ri > 0) { ups = updates.filter(function (u) { return u.round === ri - 1; }); stale = ups.length > 0; }
 
     var d = nodeEl(cols.data, "data");
     setNode(d, { status: "none", icon: "db", title: job.spec.dataset.source.replace(/^.*[\/]/, "") || "data", sub: job.shards + " shards", footLeft: "shards", kv: [["size", String(job.spec.dataset.shard_size)]], extra: "ps-static", ports: ["right"] });
 
     var g = groupEl(cols.trainers, "round");
     var revealed = ups.filter(function (u) { return ["revealed", "accepted"].indexOf(u.status) >= 0; }).length;
-    setGroup(g, { status: open ? (ups.length ? "training" : "unavailable") : "idle", name: "round " + ri, state: open ? (ups.length ? revealed + "/" + ups.length + " updates in" : "waiting") : (current ? current.accepted + " accepted" : "–"), port: false });
+    var pillState = stale ? "starting · " + ups.length + " from round " + (ri - 1) : open ? (ups.length ? revealed + "/" + ups.length + " updates in" : "waiting") : (current ? current.accepted + " accepted" : "–");
+    setGroup(g, { status: stale ? "idle" : open ? (ups.length ? "training" : "unavailable") : "idle", name: "round " + ri, state: pillState, port: false });
     var tn = g.querySelector(".ps-group-nodes"), keepT = {}; tn.classList.add("ps-vertical");
     if (!ups.length) {
       var w = nodeEl(tn, "wait"); setNode(w, { status: "unavailable", icon: "clock", title: "no trainer yet", sub: job.waiting_reason || "joins at next heartbeat", tooltip: job.waiting_reason || "", kv: [] }); keepT.wait = true;
     }
     ups.forEach(function (u) {
-      var st = u.status === "assigned" ? "unavailable" : u.status === "committed" ? "paused" : (u.status === "revealed" || u.status === "accepted") ? "training" : "offline";
+      var st = stale ? "idle" : u.status === "assigned" ? "unavailable" : u.status === "committed" ? "paused" : (u.status === "revealed" || u.status === "accepted") ? "training" : "offline";
       var id = "u:" + u.node, href = u.node.length === 64 ? "/machine/" + u.node : null;
       var n = nodeEl(tn, id, href);
-      setNode(n, { status: st, icon: icons[u.node] || "pc", title: u.machine, sub: u.status + " · shard " + u.shard, href: href, footLeft: u.loss_end != null ? "loss " + fmt(u.loss_end, 3) : "", kv: u.score != null ? [["score", fmt(u.score, 3)]] : [], tooltip: u.reject_reason || u.status, ports: ["left", "right"] });
+      setNode(n, { status: st, icon: icons[u.node] || "pc", title: u.machine, sub: stale ? "round " + u.round + " done · shard " + u.shard : u.status + " · shard " + u.shard, href: href, footLeft: u.loss_end != null ? "loss " + fmt(u.loss_end, 3) : "", kv: u.score != null ? [["score", fmt(u.score, 3)]] : [], tooltip: u.reject_reason || u.status, ports: ["left", "right"] });
       keepT[id] = true;
     });
     prune(tn, keepT);
@@ -408,12 +431,13 @@
 
     // wires: data → bus → each trainer; each trainer → bus → aggregate; aggregate → weights
     var wires = [];
-    var inCls = function (u) { return u.status === "assigned" && open ? "ps-wire-active ps-ants" : "ps-wire-idle"; };
+    var inCls = function (u) { return !stale && u.status === "assigned" && open ? "ps-wire-active ps-ants" : "ps-wire-idle"; };
     var outCls = function (u) {
+      if (stale) return "ps-wire-idle";
       return u.status === "committed" ? "ps-wire-paused ps-ants" : (u.status === "revealed" && open) ? "ps-wire-active ps-ants" : u.status === "accepted" ? "ps-wire-active" : (u.status === "rejected" || u.status === "expired") ? "ps-wire-down" : "ps-wire-idle";
     };
-    var anyIn = ups.some(function (u) { return u.status === "assigned"; }) && open;
-    var anyOut = ups.some(function (u) { return u.status === "committed" || u.status === "revealed"; }) && open;
+    var anyIn = !stale && open && ups.some(function (u) { return u.status === "assigned"; });
+    var anyOut = !stale && open && ups.some(function (u) { return u.status === "committed" || u.status === "revealed"; });
     function busX(P, leftPort, rightPorts) {
       var l = P(leftPort); if (!l) return null;
       var rx = null; rightPorts.forEach(function (id) { var p = P(id); if (p && (rx === null || p.x < rx)) rx = p.x; });

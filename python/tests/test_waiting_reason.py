@@ -49,7 +49,9 @@ def test_waiting_reason_and_busy_scope(server, dataset_dir, monkeypatch, tmp_pat
     any_device = jobs.submit(owner, _spec("any-device", dataset_dir, "any"), progress=lambda s: None)
     assigned = machine.heartbeat(idle)["assignment"]
     assert assigned is not None and assigned["job_id"] == any_device["id"]
-    assert owner.job(any_device["id"])["waiting_reason"] is None
+    detail = owner.job(any_device["id"])
+    assert detail["waiting_reason"] is None
+    assert detail["trainers"] == [{"node": ident.node_id, "name": "cpu-box", "round": 0, "status": "assigned", "current": True}]
     # the machine holds an update now, so a third job explains that instead of the requirements
     third = jobs.submit(owner, _spec("third", dataset_dir, "any"), progress=lambda s: None)
     assert owner.job(third["id"])["waiting_reason"].startswith("1 idle machine still holds an update of another round")

@@ -76,6 +76,7 @@ class Agent:
         self.creds: MachineCredentials | None = None
         self.state = "idle"
         self.detail = ""
+        self.last_round_note: tuple[str, float] = ("", 0.0)
         self.job_id: str | None = None
         self.round: int | None = None
         self.step = 0
@@ -217,11 +218,17 @@ class Agent:
         self.after_reveal(job_id, rnd, result)
         t_done = time.perf_counter()
         self.session_rounds += 1
+        self.last_round_note = (f"round {rnd} of {spec.name} done, waiting for the next", time.time())
         self.session_samples += result.samples
         log.info(
             "round %s done: loss %.3f→%.3f, %s bytes up, fetch %.1fs train %.1fs upload %.1fs",
             rnd, result.loss_start, result.loss_end, f"{len(encoded):,}", t_fetch - t0, t_train - t_fetch, t_done - t_train,
         )
+
+    def _between_rounds(self) -> str:
+        """The idle detail for a minute after a round, so the fleet shows the machine is still in the job."""
+        note, at = self.last_round_note
+        return note if note and time.time() - at < 60 else ""
 
     def availability(self) -> tuple[bool, str]:
         """Org policy first, then local tightening. Returns (available, reason)."""
@@ -275,7 +282,7 @@ class Agent:
                 with self._lock:
                     self.state = "paused" if self.paused else ("idle" if avail else "unavailable")
                     self.job_id = self.round = None
-                    self.detail = "paused by admin" if self.paused else why
+                    self.detail = "paused by admin" if self.paused else (why or self._between_rounds())
                 try:
                     reply = self.heartbeat()
                 except ApiError as e:

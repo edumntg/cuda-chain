@@ -72,6 +72,10 @@ Dial: ENERGY 2 / RHYTHM 2 / MOTION 2.
   later row a corridor that hugs the boxes above or passes through a gap between them.
   Inside a group the same scheme repeats at a smaller scale. The trunk and the bus turn
   green and move while any machine trains; a drop takes the colour of what it reaches.
+- A machine belongs to a job's group while it trains it and for the two rounds after its
+  last update, shown as idle with "between rounds"; the group goes back to a waiting node
+  only when nobody took part recently. A job's waiting sentence appears after 20 s without
+  an update, never between the rounds of a job that progresses.
 - Network diagram (overview, fleet): the coordinator on top (header "Coordinator", the org
   name with a count of machines online, one small square per machine coloured by status,
   footer with the scheduler state and rounds per hour); below it one group per running

@@ -56,7 +56,10 @@ class Assignment:
 
 
 class Engine:
-    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None, scoring_cfg=None, notifier=None, credits_cfg=None):
+    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None, scoring_cfg=None, notifier=None, credits_cfg=None, idle_poll_interval_s: int = 3):
+        # A round does not close with fewer trainers than there are idle machines that fit until
+        # the slower pollers had two idle polls to join. Keeps a fast machine from taking every round.
+        self.gather_window_s = 2 * idle_poll_interval_s + 2
         from .config import CreditsConfig
 
         self.credits_cfg = credits_cfg or CreditsConfig()
@@ -334,7 +337,10 @@ class Engine:
         in_flight = counts.get("assigned", 0) + counts.get("committed", 0)
         now = db.now()
         if revealed >= spec.requirements.min_trainers and in_flight == 0:
-            self._close_round(session, job, rnd, spec)
+            expected = self._expected_trainers(session, spec)
+            age = (now - rnd.opened_at).total_seconds()
+            if revealed >= expected or age >= self.gather_window_s:
+                self._close_round(session, job, rnd, spec)
         elif now >= rnd.deadline_at:
             for u in session.scalars(
                 select(db.Update).where(db.Update.job_id == job.id, db.Update.round_index == rnd.index, db.Update.status.in_(("assigned", "committed")))
@@ -347,6 +353,15 @@ class Engine:
                 rnd.deadline_at = now + dt.timedelta(seconds=spec.requirements.round_timeout_s)
                 session.commit()
                 self.bus.publish(f"job:{job.id}", {"event": "round_extended", "job": job.id, "round": rnd.index})
+
+    @staticmethod
+    def _expected_trainers(session: Session, spec: JobSpec) -> int:
+        """How many machines could take this round now: online, idle or training, not held back, and fitting."""
+        machines = session.scalars(
+            select(db.Machine).where(db.Machine.status.in_(("idle", "training")), db.Machine.paused_by_admin.is_(False), db.Machine.draining.is_(False))
+        ).all()
+        n = sum(1 for m in machines if _machine_fits(m, spec))
+        return min(n, spec.requirements.max_trainers)
 
     def _eval_tensors(self, job: db.Job) -> tuple[torch.Tensor, torch.Tensor]:
         if job.eval_blob not in self._eval_cache:
@@ -520,6 +535,9 @@ def waiting_reason(session: Session, job: db.Job) -> str | None:
     rnd = Engine.current_round(session, job)
     if rnd is None or rnd.status != "open":
         return None
+    # Between rounds of a job that progresses, the round is young and empty: that is not waiting.
+    if rnd.index > 0 and rnd.opened_at is not None and (db.now() - rnd.opened_at).total_seconds() < 20:
+        return None
     in_flight = session.scalar(
         select(func.count())
         .select_from(db.Update)
@@ -554,6 +572,35 @@ def waiting_reason(session: Session, job: db.Job) -> str | None:
         return f"{_plural(len(fit), 'idle machine')} still holds an update of another round; it is free when that round closes or expires"
     verb = "fits" if len(free) == 1 else "fit"
     return f"{_plural(len(free), 'idle machine')} {verb}; the next heartbeat assigns the round"
+
+
+def recent_trainers(session: Session, job: db.Job, show_names: bool = True) -> list[dict[str, Any]]:
+    """Machines that took part in the current or the previous round, newest round first, one entry each.
+    The dashboard keeps them in the job's group between rounds instead of showing an empty job."""
+    if job.status != "running":
+        return []
+    rows = session.execute(
+        select(db.Update, db.Machine)
+        .join(db.Machine, db.Machine.id == db.Update.machine_id)
+        .where(db.Update.job_id == job.id, db.Update.round_index >= job.round_index - 1)
+        .order_by(db.Update.round_index.desc(), db.Update.id)
+    ).all()
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for u, m in rows:
+        if m.node_id in seen:
+            continue
+        seen.add(m.node_id)
+        out.append(
+            {
+                "node": m.node_id if show_names else m.node_id[:8],
+                "name": m.name if show_names else m.node_id[:8],
+                "round": u.round_index,
+                "status": u.status,
+                "current": u.round_index == job.round_index,
+            }
+        )
+    return out
 
 
 def _machine_fits(machine: db.Machine, spec: JobSpec) -> bool:

@@ -230,6 +230,33 @@ later milestone; the entry table and the API are the place to connect one.
 - Telemetry from a machine is hardware state and the trainer's own log lines. Nothing else
   on the machine is read.
 
+## Hosting on Railway
+
+Railway builds the container from `deploy/Dockerfile` and gives the service a public
+address. One service is enough for a team. The steps:
+
+1. Create a project from the repository. In the service settings, set the variable
+   `RAILWAY_DOCKERFILE_PATH` to `deploy/Dockerfile`.
+2. Add a volume and mount it at `/data`. The database, the blobs and the server key are
+   stored there.
+3. Set these variables:
+
+   | Variable | Value |
+   |---|---|
+   | `PLASMON_PUBLIC_URL` | `https://${{RAILWAY_PUBLIC_DOMAIN}}` |
+   | `PLASMON_SESSION_SECRET` | a long random string |
+   | `PLASMON_DB_URL` | optional: `${{Postgres.DATABASE_URL}}` when you add a Railway PostgreSQL service. Without it, the server uses SQLite in the volume. |
+
+   The server listens on the port that Railway gives in `PORT`. You do not set a port.
+4. Set the health check path to `/v1/healthz` and deploy.
+5. Open the public address and register. The first account becomes the owner. Then set
+   `PLASMON_OPEN_REGISTRATION=0` and redeploy, so that new people join by invite only.
+6. On each machine: `plasmon login https://<your-domain>`, then `plasmon trainer start`.
+
+The dashboard, the API and the CLI use the same address. The server starts with its
+defaults when `/data/plasmon-server.yaml` does not exist; the variables above are all
+that a Railway deployment needs.
+
 ## Problems and solutions
 
 | Problem | Cause | Solution |

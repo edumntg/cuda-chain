@@ -12,12 +12,11 @@
 <p class="muted">Submitted by {{ job.owner.email if job.owner else job.owner_id }} {{ job.created_at|ago }} ago · {{ job.spec.model.arch }} · {{ job.spec.dataset.source }}</p>
 <div class="legend" aria-hidden="true"><span class="l-training"><i></i>update in flight</span><span class="l-paused dashed"><i></i>committed, upload pending</span><span class="dashed"><i></i>assigned</span><span class="l-offline dashed"><i></i>rejected or expired</span></div>
 <div class="diagram is-loading" data-diagram="job" data-job="{{ job.id }}" aria-busy="true">
-  <div class="skeleton" style="left: 12px; top: 40px; width: 168px; height: 72px;"></div>
-  <div class="skeleton" style="left: 240px; top: 12px; width: 168px; height: 72px;"></div>
-  <div class="skeleton" style="left: 240px; top: 98px; width: 168px; height: 72px;"></div>
-  <div class="skeleton" style="left: 468px; top: 40px; width: 168px; height: 72px;"></div>
-  <div class="skeleton" style="left: 696px; top: 40px; width: 168px; height: 72px;"></div>
-  <div style="height: 190px;"></div>
+  <div class="skeleton" style="left: 16px; top: 44px; width: 120px; height: 62px;"></div>
+  <div class="skeleton" style="left: 196px; top: 20px; width: 240px; height: 110px;"></div>
+  <div class="skeleton" style="left: 496px; top: 44px; width: 120px; height: 62px;"></div>
+  <div class="skeleton" style="left: 676px; top: 44px; width: 120px; height: 62px;"></div>
+  <div class="skeleton-space" style="height: 150px;"></div>
 </div>
 <div id="job" hx-get="/partials/jobs/{{ job.id }}" hx-trigger="{% if job.status == 'running' %}every 4s{% else %}none{% endif %}" hx-swap="innerHTML">
   {% include "partials/job_live.html" %}

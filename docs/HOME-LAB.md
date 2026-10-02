@@ -40,11 +40,25 @@ python3 -m plasmon --version
 
 Both print `plasmon 0.1.2`.
 
-To update the engine later, when the repository has changed:
+To update later, when the repository has changed, update the two parts. The CLI binary:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.sh | sh
+```
+
+(Windows: `irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex`.)
+The engine:
 
 ```bash
 python3 -m pip install --force-reinstall --no-deps "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
 ```
+
+`plasmon --version` shows the binary; `python3 -m plasmon --version` shows the engine. Both
+must show the new version. Then stop and start `plasmon server start` and each
+`plasmon trainer start`: a running process keeps the old code, and the dashboard footer
+shows the version of the running server. If the two versions differ, the CLI starts the
+engine with the first `python3` on PATH that imports plasmon; `PLASMON_PYTHON` points it to
+another interpreter.
 
 ### A2. Start the coordinator
 

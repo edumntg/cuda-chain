@@ -44,13 +44,13 @@ plasmon server init
 plasmon server start
 ```
 
-The server prints the dashboard address, for example `http://192.168.1.20:7117`. Keep
-this terminal open.
+The server prints its addresses. On this computer, use `http://localhost:7117`. Keep this
+terminal open.
 
 ## Step 3: create the owner account
 
-Open the dashboard address in a browser. Select **Create account**. The first account on a
-server becomes the owner.
+Open `http://localhost:7117` in a browser. Select **Create account**. The first account on
+a server becomes the owner.
 
 ## Step 4: log in from the command line
 

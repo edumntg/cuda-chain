@@ -57,9 +57,17 @@ def test_pause_drain_resume_and_logs(server, admin, machine):
     assert not agent.paused
     admin.post(f"/v1/fleet/{node}/tags", {"tags": ["lab", "gpu-none"]})
     assert admin.machine(node)["tags"] == ["gpu-none", "lab"]
-    time.sleep(2.5)  # the agent ships its log lines with the next heartbeat
-    logs = admin.get(f"/v1/fleet/{node}/logs", limit=50)
+    logs = []
+    for _ in range(50):  # the agent ships its log lines with the next heartbeat
+        logs = admin.get(f"/v1/fleet/{node}/logs", limit=50)
+        if any("paused" in line["message"] for line in logs):
+            break
+        time.sleep(0.3)
     assert any("paused" in line["message"] for line in logs), logs
+    for _ in range(50):
+        if admin.get(f"/v1/fleet/{node}/logs", grep="resumed"):
+            break
+        time.sleep(0.3)
     assert admin.get(f"/v1/fleet/{node}/logs", grep="resumed")
     audit = admin.get("/v1/audit")
     assert {a["action"] for a in audit} >= {"fleet.pause", "fleet.resume", "fleet.tags", "machine.register"}

@@ -5,28 +5,25 @@ Anyone submits a model and a dataset. Volunteer *trainers* each train on a slice
 data, their updates are merged, and they are paid in proportion to the training progress
 they verifiably contributed.
 
-> **Status: design stage.** The three code branches in this repository (`development`,
-> `initial-docs`, `jules_wip_*`) are early experiments. None of them trains a model, and
-> two of them do not build or start. See [`docs/AUDIT.md`](docs/AUDIT.md) for the
-> line-by-line audit. This README is the redesign: what the system should be, how it
-> works, what it is built on, and how it goes live. Nothing below is implemented yet
-> unless explicitly marked.
+> **Status: design stage.** This document is the specification: what the network is,
+> how a training round works, what it is built on, and how it goes live. Implementation
+> starts with milestone M0 (§11). Nothing below is implemented yet unless marked.
 
 ---
 
 ## Table of contents
 
 1. [The idea](#1-the-idea)
-2. [What changed from the original idea, and why](#2-what-changed-from-the-original-idea-and-why)
+2. [Design principles](#2-design-principles)
 3. [How it works](#3-how-it-works)
 4. [Architecture](#4-architecture)
-5. [Tech stack](#5-tech-stack)
-6. [Is it a server or a blockchain?](#6-is-it-a-server-or-a-blockchain)
-7. [Going live: from laptop to first users](#7-going-live-from-laptop-to-first-users)
-8. [Prior art and competitors](#8-prior-art-and-competitors)
-9. [Repository layout](#9-repository-layout)
-10. [Roadmap](#10-roadmap)
-11. [Audit of the existing code](#11-audit-of-the-existing-code)
+5. [Interfaces: CLI and web dashboard](#5-interfaces-cli-and-web-dashboard)
+6. [Tech stack](#6-tech-stack)
+7. [Is it a server or a blockchain?](#7-is-it-a-server-or-a-blockchain)
+8. [Going live: from laptop to first users](#8-going-live-from-laptop-to-first-users)
+9. [Prior art and competitors](#9-prior-art-and-competitors)
+10. [Repository layout](#10-repository-layout)
+11. [Roadmap](#11-roadmap)
 12. [Contributing and license](#12-contributing-and-license)
 
 ---
@@ -49,49 +46,51 @@ round starts. When the budget or the token count is exhausted the requester down
 final weights. Trainers are paid per round from the requester's deposit, weighted by their
 verified contribution.
 
+Everything is operated from two surfaces: a **CLI** (`cudachain`) that trainers and
+requesters live in, and a **web dashboard** where accounts, credits and history live and
+where anyone can watch the network run (§5).
+
 The goal is **not** to out-train hyperscalers. It is to make the long tail of training
 work (fine-tunes, domain models, 100 M to 10 B parameter pre-training, RL post-training)
 cheap and open by using hardware that is already switched on and idle.
 
-## 2. What changed from the original idea, and why
+## 2. Design principles
 
-The original pitch was: "each trainer trains one batch, then combine the weights, like
-multi-GPU training". Two parts of that do not survive contact with the literature or the
-code, and one part was missing.
+Three decisions shape everything else. Each one follows from what has and has not worked
+in internet-scale training over the last three years (§9).
 
-**"Combine the weights" has to be a specific algorithm.** Multi-GPU training works because
-GPUs exchange gradients *every step* over 400 Gbit/s links. Over the internet a step-wise
-all-reduce of even a 150 M parameter model is impossible. Averaging independently trained
-weights after many steps does not work either; the replicas drift apart and the average is
-worse than any of them. The method every working decentralized run uses today is
-**DiLoCo** (Distributed Low-Communication training): each worker runs an inner optimizer
-(AdamW) for H ≈ 100–500 local steps, computes a *pseudo-gradient* Δ = θ_start − θ_end,
-compresses it, and a single **outer optimizer** (Nesterov momentum) applies the average of
-all pseudo-gradients to the global model. Communication drops by 100–500× and convergence
-matches data-parallel training within a few percent. Combined with pseudo-gradient
-compression (DeMo / SparseLoCo: top-k 1–3 % plus 2-bit quantization with error feedback)
-the per-round traffic for a 1 B model is tens of megabytes. This is now the base
-algorithm of cuda-chain, not an implementation detail.
+**Merging is DiLoCo, not step-wise all-reduce and not weight averaging.** Multi-GPU
+training in a datacentre exchanges gradients *every step* over 400 Gbit/s links; over the
+internet a per-step all-reduce of even a 150 M parameter model is impossible. Averaging
+independently trained weights after many steps does not work either: the replicas drift
+apart and the average is worse than any of them. The method every working decentralized
+run uses is **DiLoCo** (Distributed Low-Communication training): each trainer runs an
+inner optimizer (AdamW) for H ≈ 100–500 local steps, computes a *pseudo-gradient*
+Δ = θ_start − θ_end, compresses it, and a single **outer optimizer** (Nesterov momentum)
+applies the average of all pseudo-gradients to the global model. Communication drops by
+100–500× and convergence matches data-parallel training within a few percent. With
+pseudo-gradient compression (DeMo / SparseLoCo: top-k 1–3 % plus 2-bit quantization with
+error feedback) the per-round traffic for a 1 B model is tens of megabytes. This is the
+base algorithm of cuda-chain.
 
-**"P2P like a blockchain" is not how any successful network is built.** Every live
-decentralized training network (Templar, Psyche, IOTA, Prime Intellect, Pluralis) has a
-*logically central* coordinator (a smart contract, a validator set, or an orchestrator
-service) that owns membership, data assignment and round transitions, with *physically
-decentralized* workers doing the compute and a P2P or object-storage layer moving blobs.
-Payments settle on an existing chain. Nobody runs a bespoke blockchain for coordination
-and nobody does a fully peer-to-peer all-reduce in production. cuda-chain follows the same
-shape (§4, §6). The three existing branches each rewrote a transport layer from scratch and
-never reached the training step; that is the trap this design avoids.
+**A coordinator, not a bespoke blockchain.** Every live decentralized training network
+(Templar, Psyche, IOTA, Prime Intellect, Pluralis) has a *logically central* coordinator,
+whether a smart contract, a validator set or an orchestrator service, that owns
+membership, data assignment and round transitions, with *physically decentralized*
+workers doing the compute and a P2P or object-storage layer moving blobs. Payments settle
+on an existing chain. Nobody runs a bespoke blockchain for coordination and nobody does a
+fully peer-to-peer all-reduce in production. cuda-chain has the same shape (§4, §7), and
+spends its engineering on the training, verification and incentive layers rather than on
+a transport protocol.
 
-**Verification was missing entirely.** If trainers are paid per update, someone will
+**Verification is built in and public.** If trainers are paid per update, someone will
 submit random tensors, copy a neighbour's update, or train on an easier dataset.
 Cryptographic proof-of-learning has been broken; bitwise-deterministic re-execution needs
 special kernels and doubles the cost. The approach that works in production is
 **economic/statistical verification**: validators measure how much each update actually
 lowers the loss on held-out data, compare the trainer's *assigned* shard against *random*
-data to catch copiers, and re-execute a random sample of rounds with a tolerance. This is
-the Gauntlet mechanism from Templar (MIT-licensed) and the Psyche witness scheme; cuda-chain
-adopts it (§3.5).
+data to catch copiers, and re-execute a random sample of rounds with a tolerance. Scores
+and scoring code are public, so anyone can recompute them (§3.5).
 
 ## 3. How it works
 
@@ -192,7 +191,7 @@ Why this is feasible on home connections (upload is the constraint):
 
 Downloads of θ_{r+1} are larger (the coordinator can send the dense delta or the
 compressed aggregate; the latter is the same order as one update). Pipeline parallelism
-for models that do not fit on one GPU is deliberately out of scope until Phase 4 (§10).
+for models that do not fit on one GPU is deliberately out of scope until Phase 4 (§11).
 
 ### 3.5 Verification and anti-cheating
 
@@ -220,7 +219,7 @@ What this does **not** solve, stated plainly: one bad update can land in the agg
 before its author is down-weighted (mitigated by top-G selection and by clipping each Δ to
 a norm bound); collusion between a majority of validators; and a trainer who honestly trains
 on *wrong* data cannot be distinguished from a slightly weak GPU. These are the open
-problems of the whole field (§8).
+problems of the whole field (§9).
 
 ### 3.6 Rewards and economics
 
@@ -250,15 +249,23 @@ requester.
 
 Dataset privacy: shards are visible to every trainer that gets them. cuda-chain v1 is for
 **public or licensable data only**; private-data training is a federated-learning problem
-(see Flower in §8) and is out of scope.
+(see Flower in §9) and is out of scope.
 
 ## 4. Architecture
 
 ```
+   ┌─────────────────────┐          ┌─────────────────────┐
+   │  CLI / TUI          │          │  Web dashboard      │
+   │  cudachain login    │          │  sign-up · plans    │
+   │  job · trainer ·    │          │  credits · history  │
+   │  validator · net    │          │  live network view  │
+   └──────────┬──────────┘          └──────────┬──────────┘
+              │  signed API calls (HTTPS / gRPC) │  HTTPS + SSE
+              ▼                                  ▼
                          ┌──────────────────────────────────────────────┐
                          │               Coordinator (API)              │
-  requester CLI ────────▶│  jobs · rounds · assignment · aggregation    │◀──── validator agents
-  (submit, pay, fetch)   │  score tables · hash-chained ledger          │      (score, re-execute)
+                         │  accounts · jobs · rounds · assignment       │◀──── validator agents
+                         │  aggregation · score tables · ledger         │      (score, re-execute)
                          │  FastAPI · Postgres · Redis · Python workers │
                          └───────┬───────────────────────────┬──────────┘
                                  │ signed metadata (gRPC/HTTP)│
@@ -287,7 +294,9 @@ Dataset privacy: shards are visible to every trainer that gets them. cuda-chain 
 | `validator` | Score updates, re-execute samples, publish signed scores | Semi-trusted via stake/reputation; scores are public and recomputable |
 | `blobstore` | Move checkpoints, shards and updates | Dumb storage; everything is hashed and signed, so a malicious store can only deny service |
 | `settlement` | Hold deposits, pay out, slash | Phase 1–2: coordinator's ledger. Phase 3: smart contracts |
-| `cli` / `sdk` | `cudachain job submit`, `cudachain trainer start`, Python SDK | Client |
+| `cli` | `cudachain` TUI and subcommands: login, jobs, trainers, validators, credits, network | Client; holds the node keypair and an API token |
+| `web` | Dashboard: accounts, plans and credits, job and trainer history, live network view, public leaderboard and explorer | Client of the same API; no privileged access |
+| `sdk` | Python package used by the CLI and by scripts (`cudachain.Client`) | Client |
 
 **Why a coordinator and not a DHT for everything.** Membership, round transitions and
 assignment need a single source of truth with sub-second latency; a DHT gives neither.
@@ -297,32 +306,160 @@ without trusting its history. Blob *transfer* is where P2P pays off (trainers se
 θ_{r+1} to each other rather than everyone hitting one bucket), so that is where the P2P
 layer goes, in Phase 2.
 
-## 5. Tech stack
+## 5. Interfaces: CLI and web dashboard
+
+Two front ends, one API. Everything the web app can do, the CLI can do, and vice versa,
+except payments, which only happen in the browser. Both talk to the coordinator with the
+same signed requests; neither has privileges the other lacks.
+
+### 5.1 The CLI (`cudachain`)
+
+The CLI is where trainers and requesters spend their time, so it has to feel good. The
+reference points are the current generation of terminal tools (Claude Code, Gemini CLI,
+Codex, `gh`, `boxd`, `pi`): an animated start screen, a real colour theme, live tables and
+progress, keyboard-driven panels, and plain text or JSON when piped.
+
+**Start-up.** Running `cudachain` with no arguments in a TTY plays a short ASCII animation
+(≈ 1 s, skippable with any key): chain links assembling into the logo with a colour sweep,
+followed by a one-screen status: who you are, credits, trainers online, your active jobs,
+latest round of each. Animation is off when stdout is not a TTY, when `NO_COLOR` or
+`CUDACHAIN_NO_ANIM` is set, or with `--plain`. The frames live in `tui/logo.py` as a list
+of strings so they are easy to redraw.
+
+```
+  ██████╗██╗   ██╗██████╗  █████╗      ██████╗██╗  ██╗ █████╗ ██╗███╗   ██╗
+ ██╔════╝██║   ██║██╔══██╗██╔══██╗    ██╔════╝██║  ██║██╔══██╗██║████╗  ██║
+ ██║     ██║   ██║██║  ██║███████║    ██║     ███████║███████║██║██╔██╗ ██║
+ ██║     ██║   ██║██║  ██║██╔══██║    ██║     ██╔══██║██╔══██║██║██║╚██╗██║
+ ╚██████╗╚██████╔╝██████╔╝██║  ██║    ╚██████╗██║  ██║██║  ██║██║██║ ╚████║
+  ╚═════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝     ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝
+  ◆ eduardo        ◆ 1,240 credits        ◆ 37 trainers online        ◆ v0.1.0
+
+  JOB                    STATE     ROUND   LOSS     TRAINERS   SPENT
+  tinyllama-es-150m      running   412     2.981    19         1,114 cr   ▂▃▃▄▅▅▆▆▇▇
+  resnet50-cifar-ft      done      120     0.412    8          210 cr     ▁▂▄▆▇▇▇███
+
+  › Press  j  jobs   t  trainers   n  network   c  credits   ?  help   q  quit
+```
+
+**Commands.** Flat verbs grouped by noun; every command accepts `--json` for scripting
+and `--plain` for logs.
+
+```
+cudachain                         open the TUI home screen
+cudachain login | logout | whoami device-code login (prints a code and URL; confirm in the browser)
+cudachain init                    create this machine's Ed25519 keypair and link it to your account
+
+cudachain job submit job.yaml     validate, estimate cost, confirm, submit
+cudachain job list | status <id> | logs <id> --follow | cancel <id> | download <id> [--round N]
+
+cudachain trainer start [--gpus 0,1] [--job <id> | --any] [--max-hours 8]
+cudachain trainer status | stop | earnings
+
+cudachain validator start | status
+
+cudachain net status | peers | rounds <job>
+cudachain credits                 balance and recent ledger entries; `credits buy` opens the browser
+cudachain ledger verify           re-verify the hash chain and signatures of the public ledger
+cudachain dashboard               full-screen TUI (same panels as the home screen, live)
+```
+
+**Live views.** `trainer start` renders a live panel: GPU utilisation and temperature,
+current round, inner-step progress bar, loss sparkline, bytes uploaded this round, verified
+tokens and credits earned this session. `job logs --follow` renders loss per round,
+trainers per round and spend. `net status` is a table of jobs and a histogram of GPUs by
+model.
+
+**Login flow.** `cudachain login` requests a device code from the coordinator, prints
+`https://cudachain.dev/device` plus an 8-character code, and polls. The user confirms in
+the browser (creating an account if needed). The CLI stores a scoped API token in the OS
+keychain (fallback: `~/.cudachain/credentials` with mode 600). The machine keypair created
+by `cudachain init` is registered to the account so earnings from that machine accrue to
+the right wallet. Tokens are revocable from the dashboard.
+
+**Why Python for the TUI.** The trainer is Python (PyTorch), and shipping one `pip install
+cudachain` that gives both the trainer and the TUI beats shipping a Go or Node binary plus
+a Python sidecar. The Python TUI stack is mature enough for this: **Typer** for commands,
+**Rich** for colour, tables, progress and the start-up animation (`rich.live`), and
+**Textual** for the full-screen dashboard. If a native binary is ever needed (instant
+start, no Python on the machine), the API is designed so a Bubble Tea or Ink client can be
+added without touching the coordinator.
+
+### 5.2 The web dashboard
+
+The web app is for everything that benefits from a browser: creating an account, paying,
+reading history, and watching the network. It is also the public face of the project.
+
+**Public pages (no login)**
+
+- **Network status:** trainers online, GPUs by model, aggregate throughput, active jobs,
+  bytes per round, uptime of the coordinator, last ledger entry hash.
+- **Job explorer:** every public job with its loss curve, rounds, trainers per round, and
+  the score table per round (the verification is public by design, §3.5).
+- **Leaderboard:** trainers by verified tokens, honesty score and uptime; validators by
+  agreement with the median.
+- **Ledger browser:** the hash-chained log, searchable, with a one-click verify.
+
+**Account pages**
+
+- **Sign-up / login:** email + password or magic link, GitHub and Google OAuth, passkeys
+  later. The same accounts the CLI logs into.
+- **Credits and plans:** buy credits by card (Stripe) or USDC; plans give monthly credits
+  at a discount plus perks such as priority scheduling and longer checkpoint retention.
+  Invoices and receipts. Trainers see **earnings** here and configure payout (USDC
+  address; Stripe Connect for fiat in a later phase).
+- **My jobs:** submit through a form that produces the same `job.yaml` the CLI uses, cost
+  estimate before confirming, live loss curve, per-round trainers and scores, download
+  checkpoints, cancel. History of every job with spend.
+- **My trainers:** every linked machine, online state, GPU, last heartbeat, rounds served,
+  earnings, honesty score, and a "revoke" button.
+- **Account:** API tokens (create, scope, revoke), linked keypairs, notification settings
+  (email or webhook when a job finishes or a trainer goes offline).
+- **Admin (project staff):** validator operations, job moderation, refunds.
+
+**Real time.** The coordinator publishes round events over Server-Sent Events; the
+dashboard and the TUI subscribe to the same stream, so both show a new round within a
+second of it closing.
+
+**Plans sketch (to be priced after Phase 1 data)**
+
+| Plan | For | Includes |
+|---|---|---|
+| Free | Trainers; requesters trying it out | Earn credits; submit jobs up to a small size on the free queue |
+| Pay-as-you-go | Most requesters | Buy credits as needed; standard priority |
+| Pro (monthly) | Teams running jobs every week | Monthly credit bundle at a discount, priority scheduling, 90-day checkpoint retention, more API tokens |
+| Enterprise | Labs | Reserved trainer pools, private datasets (Phase 4), invoicing |
+
+## 6. Tech stack
 
 | Layer | Choice | Why |
 |---|---|---|
 | Trainer runtime | **Python 3.11+, PyTorch 2.x, CUDA 12.x** (bf16 autocast, `torch.compile` optional) | Where every model and every volunteer already is. CPU and Apple MPS backends supported for small jobs and for developer testing; CUDA is the first-class target |
 | Training algorithm | **DiLoCo** inner/outer loop; reference from Prime Intellect's `OpenDiLoCo` / `prime` (Apache-2.0) | Proven at 1–100 B scale over WAN |
 | Compression | **SparseLoCo / DeMo** style top-k + low-bit + error feedback; reference code from Templar (MIT) and Nous Psyche (Apache-2.0/MIT) | 100–500× bandwidth reduction, convergence proven |
-| Tensor wire format | **safetensors** for checkpoints; custom flat binary frame (BLAKE3 hash, dtype, shape, packed indices + values) for compressed Δ | Zero-copy, no JSON (see audit: the old branches serialized matrices as JSON text) |
+| Tensor wire format | **safetensors** for checkpoints; custom flat binary frame (BLAKE3 hash, dtype, shape, packed indices + values) for compressed Δ | Zero-copy binary; tensors never travel as text |
 | Dataset format | **WebDataset** `.tar` shards of pre-tokenized `uint16`/`uint32` arrays, or images; content-addressed | Streamable, sliceable, cacheable, standard |
 | Identity / signing | **Ed25519** (PyNaCl / `cryptography`), **BLAKE3** hashing | Fast, small, standard; same as Iroh node IDs |
-| Coordinator API | **FastAPI** + **Pydantic v2** + **SQLAlchemy 2.0** on **PostgreSQL**; **Redis** for round timers and queues; **gRPC** streaming for trainer heartbeats and round events | Python keeps coordinator and trainer in one language; Postgres gives real transactions (the audited branch used SQLite and had a double-assignment race) |
+| Coordinator API | **FastAPI** + **Pydantic v2** + **SQLAlchemy 2.0** on **PostgreSQL**; **Redis** for round timers and queues; **gRPC** streaming for trainer heartbeats and round events | Python keeps coordinator and trainer in one language; Postgres gives real transactions and row locks for batch assignment |
 | Blob storage | **S3-compatible** (Cloudflare R2 in production, MinIO locally); Phase 2: **Iroh** (Rust, QUIC, hole-punching, blobs + gossip) or **Hivemind** DHT for peer seeding | Start boring, add P2P where it reduces cost |
 | Validator agent | Same Python package as trainer, `cudachain validator start` | One binary, two modes |
 | Scoring | Templar **Gauntlet**-style loss-delta scoring, **OpenSkill** ratings (`openskill` PyPI) | Deployed in production for 72 B; MIT |
 | Settlement (Phase 3) | **Solidity on Base** (OpenZeppelin, Foundry) or **Anchor on Solana**; Merkle-root payouts | Use an existing chain; both have public reference implementations in this space |
 | Sandbox (Phase 3) | **Docker** with `--gpus`, no network, read-only rootfs, seccomp; **gVisor** when available | Standard GPU isolation story |
-| CLI / SDK | **Typer** CLI, `pip install cudachain`, Python SDK | |
-| Packaging / ops | `pyproject.toml` (uv/hatch), Docker images for coordinator and trainer, `docker compose` dev stack, GitHub Actions, **pytest** with a two-trainer in-process integration test | The audited branches had zero tests |
+| CLI / TUI | **Typer** (commands) + **Rich** (colour, tables, progress, start-up animation) + **Textual** (full-screen dashboard); `pip install cudachain`; token in OS keychain via `keyring` | One install gives trainer and TUI; mature Python stack; `--json`/`--plain` for scripts |
+| SDK | `cudachain` Python package, `cudachain.Client` | Shared by CLI and user scripts |
+| Web dashboard | **Next.js** (React, TypeScript) + **Tailwind** + **shadcn/ui**; charts with **Recharts**; live updates over **SSE**; deployed on Vercel or beside the coordinator | Standard, fast to build, good charting; the API stays in Python |
+| Accounts and auth | Coordinator owns accounts: email + password / magic link, GitHub and Google OAuth (**authlib**), device-code flow for the CLI, scoped API tokens, passkeys later | One identity for CLI and web; no third-party auth lock-in |
+| Payments | **Stripe** (cards, subscriptions for plans, Connect for fiat payouts later); **USDC** via Coinbase Commerce in Phase 2, direct on-chain in Phase 3 | Credits are the unit; fiat and crypto are just on-ramps |
+| Packaging / ops | `pyproject.toml` (uv/hatch), Docker images for coordinator and trainer, `docker compose` dev stack, GitHub Actions, **pytest** with a two-trainer in-process integration test | Testable from day one |
 | Observability | Structured logs (structlog), Prometheus metrics, Grafana dashboard: loss per round, trainers online, bytes per round, score distribution | Trainers need a public leaderboard and requesters need a loss curve |
 
 Deliberately **not** in the stack: a new blockchain, a new P2P protocol, JSON tensors,
 C++ (until there is a measured hot path that PyTorch does not cover), raw CUDA kernels in
-v1. The project name is kept because CUDA GPUs are the hardware the network runs on, not
-because users write kernels.
+v1. The name refers to the hardware the network runs on and to the hash-chained ledger;
+users never write kernels.
 
-## 6. Is it a server or a blockchain?
+## 7. Is it a server or a blockchain?
 
 Both questions people ask, answered directly.
 
@@ -348,7 +485,7 @@ progressively: Phase 1 trusts the project's coordinator (while making its behavi
 auditable); Phase 3 trusts a quorum of staked validators; the design never requires
 trusting trainers.
 
-## 7. Going live: from laptop to first users
+## 8. Going live: from laptop to first users
 
 ### Phase 0: it works on one machine (target: 6–8 weeks of work)
 
@@ -376,13 +513,15 @@ an artefact (open weights) that proves the network works.
 - **Reference run:** a 150 M Llama-style model on 3–5 B tokens of FineWeb-Edu, DiLoCo
   H=300, bf16, 2 % top-k 2-bit. On 20 consumer GPUs this takes about one to two weeks.
   Publish loss curve and leaderboard live.
-- **Trainer onboarding:** `pip install cudachain && cudachain trainer start --join <run>`
+- **Trainer onboarding:** sign up on the dashboard, then `pip install cudachain && cudachain login && cudachain trainer start --join <run>`
   or `docker run cudachain/trainer`. Minimum: NVIDIA GPU with ≥ 8 GB VRAM (RTX 3060 /
   3070 / 4060 Ti and up), Linux or WSL2, 20 Mbit/s upload, driver ≥ 535. Invite codes via
   Discord/GitHub; 10–50 people.
 - **Verification:** validators run by the project only (2–3 GPUs), full Gauntlet scoring
   live, scores public. Credits accrue in the hash-chained ledger; not yet withdrawable.
-  Leaderboard and "verified tokens trained" badge are the reward.
+  The public leaderboard, the live job page and a "verified tokens trained" badge are
+  the reward. The dashboard ships in this phase with network status, job explorer,
+  leaderboard and the account pages; payments come in Phase 2.
 - **Exit criterion:** the 150 M model reaches the loss of a single-GPU baseline within
   5–10 %; at least one cheating attempt (seeded by the team) is caught and down-weighted;
   no round lost to coordinator failure.
@@ -408,7 +547,7 @@ an artefact (open weights) that proves the network works.
   trainer and validator bonds, slashing.
 - Coordinator replicated across validators; round results accepted on quorum signature.
 - Custom model code in sandboxed containers; RL post-training jobs with TOPLOC-style
-  rollout verification (the cheapest verifiable workload, see Prime Intellect in §8).
+  rollout verification (the cheapest verifiable workload, see Prime Intellect in §9).
 
 ### Phase 4: scale
 
@@ -418,7 +557,7 @@ an artefact (open weights) that proves the network works.
 - Governance of parameters and fees; token only if it is needed for something credits
   cannot do.
 
-## 8. Prior art and competitors
+## 9. Prior art and competitors
 
 Full research notes with sources are in [`docs/LANDSCAPE.md`](docs/LANDSCAPE.md). Summary
 as of October 2026:
@@ -453,25 +592,17 @@ as of October 2026:
 5. Verification is the hard, unsolved problem. Ship statistical verification and publish
    detection rates rather than promising cryptographic proofs.
 
-## 9. Repository layout
+## 10. Repository layout
 
-Current state of the branches:
-
-| Branch | Contents | Verdict |
-|---|---|---|
-| `main` | This README, `docs/` | Design |
-| `development` | C++17 / Boost.Asio TCP mesh that ships 100×100 matrices as JSON for a CPU matmul (Aug–Sep 2024) | Does not compile (3-vs-7 argument mismatch, missing include path); double free in `Matrix`; results never returned. Archive |
-| `initial-docs` | FastAPI + SQLite job-ticket API ("CPChain") and click CLI generated with Jules (May 2025) | Does not start (`NameError` ×3, missing deps, circular import in CLI); no P2P, no training. Archive |
-| `jules_wip_8061578287170410081` | asyncio TCP message-passing skeleton with simulated worker (May 2025) | Daemon starts; CLI cannot talk to it; worker is `sleep(2)`. Archive |
-
-Proposed layout for the rewrite (one Python monorepo):
+One Python monorepo plus the web app:
 
 ```
 cudachain/
 ├── pyproject.toml
 ├── docker-compose.yml            # postgres, redis, minio, coordinator, 2× trainer
 ├── src/cudachain/
-│   ├── cli.py                    # typer: job | trainer | validator | ledger
+│   ├── cli/                      # typer: login | job | trainer | validator | net | credits | ledger
+│   ├── tui/                      # rich + textual: logo animation, home screen, live panels, dashboard
 │   ├── proto/                    # signed message schemas (pydantic) + gRPC defs
 │   ├── crypto/                   # ed25519 identity, blake3 content addressing
 │   ├── blobs/                    # s3 client, content-addressed cache, (phase 2) iroh/hivemind
@@ -481,60 +612,39 @@ cudachain/
 │   ├── validator/                # agent: cheap checks, gauntlet scoring, re-execution
 │   ├── coordinator/              # fastapi app, round state machine, aggregation, ledger
 │   └── models/                   # allow-listed architectures (llama, gpt2, resnet, lora)
+├── web/                          # next.js dashboard: public pages, account, credits, jobs, trainers
 ├── contracts/                    # phase 3: foundry project (escrow, payouts, bonds)
 ├── tests/                        # unit + two-trainer integration test
 └── docs/
-    ├── AUDIT.md                  # line-level audit of the old branches
-    ├── LANDSCAPE.md              # competitor / research notes with sources
+    ├── LANDSCAPE.md              # competitor and research notes with sources
     └── PROTOCOL.md               # (to write) message formats and round state machine
 ```
 
-## 10. Roadmap
+## 11. Roadmap
 
 - [ ] **M0 Scaffold.** `pyproject`, identity, signed messages, blob client, compose stack, CI.
+      CLI skeleton with the start-up animation, `login` (device code), `whoami`, `--json`.
 - [ ] **M1 DiLoCo locally.** Inner/outer loop, SparseLoCo compression, binary Δ frames,
       two in-process trainers reach single-GPU loss on a 10–30 M model. Traffic measured.
 - [ ] **M2 Coordinator.** Job spec, round state machine, deterministic assignment,
-      commit-reveal, aggregation, hash-chained ledger, join/leave mid-run.
+      commit-reveal, aggregation, hash-chained ledger, join/leave mid-run. Accounts and
+      API tokens. CLI `job`, `trainer`, `net` commands with live Rich panels.
 - [ ] **M3 Verification.** Gauntlet scoring, OpenSkill ratings, top-G selection, seeded
       cheating tests (random Δ, copied Δ, wrong shard) all detected.
-- [ ] **M4 Alpha run.** VPS + R2, 150 M reference model, 10–50 invited trainers, public
-      loss curve and leaderboard. (Phase 1 above.)
-- [ ] **M5 Paid jobs.** Credits, Stripe/USDC in, USDC out, allow-listed fine-tune/LoRA jobs,
+- [ ] **M4 Alpha run.** VPS + R2, 150 M reference model, 10–50 invited trainers. Web
+      dashboard v1: sign-up, network status, job explorer, leaderboard, my trainers.
+      Textual full-screen TUI. (Phase 1 above.)
+- [ ] **M5 Paid jobs.** Credits and plans in the dashboard (Stripe, USDC in; USDC out),
+      job submission form, history and invoices, allow-listed fine-tune/LoRA jobs,
       community validators with bonds, P2P seeding. (Phase 2.)
 - [ ] **M6 Contracts and quorum coordinator.** (Phase 3.)
 - [ ] **M7 Pipeline parallelism, async rounds, custom code sandbox.** (Phase 4.)
 
-## 11. Audit of the existing code
-
-[`docs/AUDIT.md`](docs/AUDIT.md) lists every finding with file and line. The headline
-items, because they shaped this design:
-
-- **Nothing trains.** All three branches stop at the transport layer. The C++ branch
-  multiplies matrices and throws the result away; the Python P2P branch "runs" a job with
-  `asyncio.sleep(2)`; the FastAPI branch is a job-ticket table.
-- **Nothing builds or starts except one daemon.** C++: declaration/definition mismatch on
-  `send_matrix_to_peers`, wrong include path for nlohmann, header-defined non-inline
-  functions. FastAPI: three `NameError`s at import, two missing dependencies, a circular
-  import that kills the CLI. asyncio: `job submit` raises `TypeError` on its only code
-  path and no CLI command can reach the running node.
-- **Memory safety.** `Matrix` has a destructor but no copy constructor and is passed by
-  value: guaranteed double free. `async_write` reads a stack variable after it has gone
-  out of scope. Unbounded `resize()` from a network-supplied length.
-- **No framing, no identity, no auth, no limits.** Both Python branches read a single
-  4 KiB buffer and trust whatever arrives; the FastAPI branch signs JWTs with a hardcoded
-  default secret if `.env` is missing and lets two workers take the same batch.
-- **JSON tensors.** Matrices and (planned) weights are serialized as JSON text, 2–3 orders
-  of magnitude too slow for model weights.
-- **Aggregation was never designed.** Every README said "combine the weights" without an
-  algorithm. That gap is now §2 and §3.3.
-
 ## 12. Contributing and license
 
-The code in the historical branches is kept for reference only. New work happens on
-`main` under the layout in §9, starting with M0. Issues are welcome, especially from people
-with a consumer GPU who want to be alpha trainers, and from anyone who has run DiLoCo,
-Hivemind, Psyche or Templar nodes.
+Work happens on `main` under the layout in §10, starting with M0. Issues are welcome,
+especially from people with a consumer GPU who want to be alpha trainers, and from anyone
+who has run DiLoCo, Hivemind, Psyche or Templar nodes.
 
 License: to be decided before M4; the intended choice is **Apache-2.0** for the client and
 coordinator (matching the ecosystem it builds on) with scoring code required to stay open.

@@ -1,6 +1,6 @@
 # Decentralized AI training: landscape and research notes
 
-Compiled October 2026 to inform the cuda-chain redesign. Claims link to a primary source
+Compiled October 2026 to inform the cuda-chain design. Claims link to a primary source
 where one was found; funding and token figures are from press coverage and should be
 re-checked before being quoted externally.
 

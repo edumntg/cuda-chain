@@ -153,6 +153,10 @@ plasmon job submit examples/mnist/job.yaml
 
 Or open **Jobs**, **Submit a job** on the dashboard, and submit the prefilled text.
 
+The job downloads MNIST once from a public mirror. Other sources (a CSV at a public URL,
+files you downloaded, Fashion-MNIST) are in
+[`examples/mnist/README.md`](../examples/mnist/README.md).
+
 The command prints the job id and the dashboard page. Within seconds the participants
 print lines like:
 

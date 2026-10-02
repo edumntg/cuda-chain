@@ -183,6 +183,11 @@ submitted mnist-home as job_3f2a9c1e0b7d
   page:  http://192.168.1.20:7117/jobs/job_3f2a9c1e0b7d
 ```
 
+The job downloads MNIST once, from a public mirror, and keeps it on the server as 60
+shards; the trainers fetch one shard per round. To use a CSV from a public URL, a copy you
+downloaded yourself, or Fashion-MNIST, see
+[`examples/mnist/README.md`](../examples/mnist/README.md).
+
 Within a few seconds the two trainer windows print lines like:
 
 ```

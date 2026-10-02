@@ -26,25 +26,10 @@ def prepare(spec: jobspec.JobSpec, progress: Callable[[str], None] = lambda s: N
     init_bytes = weights.to_bytes(theta)
     init_id = hashing.digest(init_bytes)
     blobs[init_id] = init_bytes
-    if spec.dataset.source == "builtin://mnist":
-        progress("dataset: MNIST (downloading on first use)")
-        train, test = data.load_mnist()
-        eval_n = max(1000, int(len(test) * spec.dataset.eval_fraction * 10))
-        eval_shard = data.Shard(test.x[:eval_n], test.y[:eval_n])
-    else:
-        source = Path(spec.dataset.source)
-        if not source.is_dir():
-            raise FileNotFoundError(f"dataset.source {spec.dataset.source} is not a directory of .npz files")
-        parts = [data.Shard.from_bytes(p.read_bytes()) for p in sorted(source.glob("*.npz"))]
-        if not parts:
-            raise FileNotFoundError("no .npz files in dataset.source")
-        import numpy as np
-
-        all_x = np.concatenate([p.x for p in parts])
-        all_y = np.concatenate([p.y for p in parts])
-        n_eval = max(1, int(len(all_y) * spec.dataset.eval_fraction))
-        eval_shard = data.Shard(all_x[:n_eval], all_y[:n_eval])
-        train = data.Shard(all_x[n_eval:], all_y[n_eval:])
+    progress(f"dataset: {spec.dataset.source}" + (" (downloading on first use)" if spec.dataset.source.startswith(("builtin://", "http")) else ""))
+    train, eval_shard = data.load_source(spec.dataset.source, spec.dataset.eval_source, spec.dataset.eval_fraction, spec.dataset.label_column, tuple(spec.dataset.image_shape))
+    if len(eval_shard) > 2000:
+        eval_shard = data.Shard(eval_shard.x[:2000], eval_shard.y[:2000])
     shards = data.split_shards(train, spec.dataset.shard_size, seed=spec.recipe.seed)
     progress(f"shards: {len(shards)} × {spec.dataset.shard_size} samples, eval {len(eval_shard)} samples")
     manifest = []

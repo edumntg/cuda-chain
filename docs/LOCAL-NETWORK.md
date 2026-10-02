@@ -217,6 +217,7 @@ Expected: an accuracy between 96 % and 98 % on the 10,000 MNIST test images.
 | The participant shows `offline` on the dashboard | Is `trainer start` still running? | Start it again, or install it as a service. |
 | A participant shows `unavailable` | Its page shows the reason | Outside the policy window, or on battery. |
 | The job stays at round 0 | **Fleet**: is at least one participant `idle`? | Start a trainer. `requirements.min_trainers` in the job must not exceed the number of participants. |
+| `job submit` says `CERTIFICATE_VERIFY_FAILED` | Python does not trust the certificate of the download mirror | macOS with Python from python.org: run `Install Certificates.command` from the Python folder in Applications. Company proxy: set `SSL_CERT_FILE` to the company CA bundle, or `PLASMON_INSECURE_DOWNLOADS=1` for the built-in datasets (checked by MD5), or download the files with `curl` and use `examples/mnist/job-local.yaml`. |
 | Rounds are slow | Participant log: the `train` time | The job's `inner_steps` and `batch_size` set the work per round. Lower them for slow computers. |
 | The server address changed after a restart of the router | `ipconfig getifaddr en0` on the server | Participants run `login` again with the new address. Set a DHCP reservation to avoid this. |
 

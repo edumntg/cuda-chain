@@ -238,7 +238,11 @@ def cmd_job_submit(args: argparse.Namespace) -> int:
 
     spec = jobspec.load(args.file)
     client = _client(args)
-    job = jobs.submit(client, spec)
+    try:
+        job = jobs.submit(client, spec)
+    except (FileNotFoundError, ValueError, RuntimeError) as e:  # dataset problems: a message, not a traceback
+        print(f"error: {e}", file=sys.stderr)
+        return 1
     url = f"{client.server}/jobs/{job['id']}"
     _print(args, job, f"submitted {job['name']} as {job['id']}\n  rounds: {job['total_rounds']}  shards: {job['shards']}  params: {job['param_count']:,}\n  watch: plasmon job watch {job['id']}\n  page:  {url}")
     return 0

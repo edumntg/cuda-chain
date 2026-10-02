@@ -103,3 +103,43 @@ def test_jobspec_dataset_fields_and_unknown_builtin():
         data.load_source("builtin://cifar")
     with pytest.raises(FileNotFoundError):
         data.load_source("/nonexistent/path.csv")
+
+
+def test_known_digests_match_cached_files():
+    import hashlib
+
+    checked = 0
+    for dataset, files in data.KNOWN_MD5.items():
+        for name, md5 in files.items():
+            p = cache_dir() / "datasets" / dataset / name
+            if p.exists():
+                assert hashlib.md5(p.read_bytes()).hexdigest() == md5, (dataset, name)
+                checked += 1
+    if checked == 0:
+        pytest.skip("no cached dataset files")
+
+
+def test_download_checks_md5_and_tls_flag(tmp_path, monkeypatch):
+    site = tmp_path / "site"
+    site.mkdir()
+    (site / "file.gz").write_bytes(gzip.compress(b"not the real file"))
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+    server = ThreadingHTTPServer(("127.0.0.1", port), partial(SimpleHTTPRequestHandler, directory=str(site)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{port}/file.gz"
+        with pytest.raises(data.DownloadError) as e:
+            data._download(url, tmp_path / "out.gz", expected_md5="0" * 32)
+        assert "MD5" in str(e.value) and not (tmp_path / "out.gz").exists()
+        data._download(url, tmp_path / "ok.gz")
+        assert (tmp_path / "ok.gz").exists()
+        with pytest.raises(data.DownloadError):
+            data._download(f"http://127.0.0.1:{port}/missing.gz", tmp_path / "x.gz")
+    finally:
+        server.shutdown()
+    assert data._tls_verify() is True
+    monkeypatch.setenv("PLASMON_INSECURE_DOWNLOADS", "1")
+    assert data._tls_verify() is False
+    assert "Install Certificates.command" in data.TLS_HELP

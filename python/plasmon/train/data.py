@@ -18,9 +18,10 @@ CSV layout: one row per image, the label in the first column (or the last, with
 from __future__ import annotations
 
 import gzip
+import hashlib
 import io
+import os
 import struct
-import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -42,6 +43,22 @@ FASHION_MIRRORS = (
     "https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/master/data/fashion/",
     "https://github.com/zalandoresearch/fashion-mnist/raw/master/data/fashion/",
 )
+# MD5 of the published archives, the same values torchvision checks. A download that does
+# not match is deleted, so an insecure TLS connection cannot feed the trainer bad data.
+KNOWN_MD5 = {
+    "mnist": {
+        "train-images-idx3-ubyte.gz": "f68b3c2dcbeaaa9fbdd348bbdeb94873",
+        "train-labels-idx1-ubyte.gz": "d53e105ee54ea40749a09fcbcd1e9432",
+        "t10k-images-idx3-ubyte.gz": "9fb629c4189551a2d022fa330f9573f3",
+        "t10k-labels-idx1-ubyte.gz": "ec29112dd5afa0611ce80d1b7f02629c",
+    },
+    "fashion-mnist": {
+        "train-images-idx3-ubyte.gz": "8d4fb7e6c68d591d4c3dfef9ec88bf0d",
+        "train-labels-idx1-ubyte.gz": "25c81989df183df01b3e8a0aad5dffbe",
+        "t10k-images-idx3-ubyte.gz": "bef4ecab320f06d8554ea6380940ec79",
+        "t10k-labels-idx1-ubyte.gz": "bb300cfdad3c16e7a12a480ee83cd310",
+    },
+}
 IDX_ALIASES = {  # other common file names for the same four files
     "train-images-idx3-ubyte.gz": ("train-images.idx3-ubyte.gz", "train-images-idx3-ubyte"),
     "train-labels-idx1-ubyte.gz": ("train-labels.idx1-ubyte.gz", "train-labels-idx1-ubyte"),
@@ -76,28 +93,71 @@ def _read_idx(data: bytes) -> np.ndarray:
     return np.frombuffer(data[4 + 4 * dims :], dtype=np.uint8).reshape(shape)
 
 
-def _download(url: str, path: Path) -> None:
+class DownloadError(RuntimeError):
+    pass
+
+
+TLS_HELP = """The download failed because Python did not trust the server's certificate.
+  - Python from python.org on macOS: run once
+      open "/Applications/Python 3.X/Install Certificates.command"   (X = your version)
+  - Behind a company proxy that inspects TLS: point Python at the company CA bundle
+      export SSL_CERT_FILE=/path/to/company-ca.pem
+  - For the built-in datasets only, you can skip TLS verification; the files are checked
+    by MD5 after the download:
+      export PLASMON_INSECURE_DOWNLOADS=1
+  - Or download the files with curl or a browser and use a local path as dataset.source
+    (see examples/mnist/README.md)."""
+
+
+def _tls_verify() -> bool:
+    return os.environ.get("PLASMON_INSECURE_DOWNLOADS", "").lower() not in ("1", "true", "yes")
+
+
+def _download(url: str, path: Path, expected_md5: str | None = None) -> None:
+    """Stream `url` to `path`. httpx brings certifi's CA bundle and honours SSL_CERT_FILE."""
+    import httpx
+
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".part")
-    req = urllib.request.Request(url, headers={"User-Agent": "plasmon"})
-    with urllib.request.urlopen(req, timeout=120) as r, open(tmp, "wb") as f:
-        while chunk := r.read(1 << 20):
-            f.write(chunk)
+    digest = hashlib.md5()
+    try:
+        with httpx.stream("GET", url, follow_redirects=True, timeout=120, verify=_tls_verify(), headers={"User-Agent": "plasmon"}) as r:
+            r.raise_for_status()
+            with open(tmp, "wb") as f:
+                for chunk in r.iter_bytes(1 << 20):
+                    f.write(chunk)
+                    digest.update(chunk)
+    except httpx.ConnectError as e:
+        tmp.unlink(missing_ok=True)
+        if "CERTIFICATE_VERIFY_FAILED" in str(e) or "certificate" in str(e).lower():
+            raise DownloadError(f"{url}: {e}\n{TLS_HELP}") from e
+        raise DownloadError(f"{url}: {e}") from e
+    except httpx.HTTPError as e:
+        tmp.unlink(missing_ok=True)
+        raise DownloadError(f"{url}: {e}") from e
+    if expected_md5 and digest.hexdigest() != expected_md5:
+        tmp.unlink(missing_ok=True)
+        raise DownloadError(f"{url}: the file does not match the published MD5 ({digest.hexdigest()} != {expected_md5})")
     tmp.replace(path)
 
 
-def _fetch(name: str, directory: Path, mirrors: tuple[str, ...] = MNIST_MIRRORS) -> bytes:
+def _fetch(name: str, directory: Path, mirrors: tuple[str, ...] = MNIST_MIRRORS, dataset: str = "mnist") -> bytes:
     path = directory / name
+    expected = KNOWN_MD5.get(dataset, {}).get(name)
     if path.exists():
-        return path.read_bytes()
+        data = path.read_bytes()
+        if expected and hashlib.md5(data).hexdigest() != expected:
+            path.unlink()  # a damaged or truncated earlier download; fetch again
+        else:
+            return data
     last: Exception | None = None
     for mirror in mirrors:
         try:
-            _download(mirror + name, path)
+            _download(mirror + name, path, expected)
             return path.read_bytes()
-        except (OSError, ValueError) as e:  # try the next mirror
+        except DownloadError as e:  # try the next mirror
             last = e
-    raise RuntimeError(f"could not download {name}: {last}")
+    raise DownloadError(f"could not download {name} from any mirror.\n{last}")
 
 
 def _maybe_gunzip(data: bytes) -> bytes:
@@ -114,7 +174,7 @@ def load_mnist(directory: Path | None = None) -> tuple[Shard, Shard]:
 def load_fashion_mnist(directory: Path | None = None) -> tuple[Shard, Shard]:
     """Fashion-MNIST from the Zalando Research repository: same files, same layout."""
     directory = directory or cache_dir() / "datasets" / "fashion-mnist"
-    parts = {k: _read_idx(_maybe_gunzip(_fetch(v, directory, FASHION_MIRRORS))) for k, v in MNIST_FILES.items()}
+    parts = {k: _read_idx(_maybe_gunzip(_fetch(v, directory, FASHION_MIRRORS, "fashion-mnist"))) for k, v in MNIST_FILES.items()}
     return Shard(parts["train_x"], parts["train_y"]), Shard(parts["test_x"], parts["test_y"])
 
 

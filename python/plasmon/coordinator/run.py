@@ -17,6 +17,7 @@ def main(argv: list[str] | None = None) -> int:
     path = Path(argv[0]) if argv else None
     cfg = config.load(path)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    logging.getLogger("httpx").setLevel(logging.WARNING)
     app = create_app(cfg)
     url = cfg.public_url or f"http://{lan_ip()}:{cfg.port}"
     print(f"plasmon coordinator\n  dashboard  {url}\n  api        {url}/api/docs\n  data       {cfg.resolved_data_dir()}", flush=True)

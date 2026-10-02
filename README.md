@@ -11,7 +11,9 @@ thousands of GPUs, each on its own desk, training as one model.
 
 > **Status: working engine, early.** The coordinator, the trainer, the Python commands,
 > the dashboard and the native CLI run end to end on one machine or on a home network:
-> see [docs/QUICKSTART.md](docs/QUICKSTART.md) and [docs/HOME-LAB.md](docs/HOME-LAB.md).
+> see [docs/QUICKSTART.md](docs/QUICKSTART.md) (one machine),
+> [docs/LOCAL-NETWORK.md](docs/LOCAL-NETWORK.md) (one server and many participants on the
+> same Wi-Fi) and [docs/HOME-LAB.md](docs/HOME-LAB.md) (a Mac and a Windows PC).
 > The roadmap (§12) marks what is done. Everything else in this document is the
 > specification the implementation follows.
 
@@ -982,11 +984,12 @@ plasmon/
 │   └── tests/                    # unit tests, two-trainer integration test, cross-language vectors
 ├── deploy/                       # docker compose bundle, Dockerfile, Caddyfile, helm chart
 ├── install/                      # install.sh, install.ps1, release manifest
-├── examples/                     # mnist job and eval script
+├── examples/                     # mnist job and eval script; local-network scripts (server, join, submit)
 ├── scripts/                      # start-up budget, vector generation
 └── docs/
     ├── PROTOCOL.md               # wire formats: identity, canonical JSON, frames, commit-reveal
     ├── QUICKSTART.md             # one machine: run the server, connect, train
+    ├── LOCAL-NETWORK.md          # one server, many participants on the same Wi-Fi
     ├── HOME-LAB.md               # two machines at home (Mac + Windows), MNIST end to end
     ├── SELF-HOSTING.md           # company deployment
     └── LANDSCAPE.md              # competitor and research notes with sources

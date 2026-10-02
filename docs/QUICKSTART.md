@@ -23,6 +23,10 @@ python -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.
 Windows, in PowerShell: `irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex`
 and `py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"`.
 
+To update, run the same two lines again (the binary and the engine), then restart the
+server and the trainers. `plasmon --version` is the binary, `python -m plasmon --version`
+is the engine.
+
 On Linux, install PyTorch for CPU first to avoid the CUDA download:
 
 ```bash

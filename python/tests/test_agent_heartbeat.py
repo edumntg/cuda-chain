@@ -47,4 +47,6 @@ def test_run_assignment_sends_training_heartbeat_first(tmp_path, monkeypatch):
     first = client.heartbeats[0]
     assert first["status"] == "training" and first["job_id"] == "job_x" and first["round"] == 3
     assert client.commits and client.commits[0][1] == 3
+    # after the round the trainer stays with the job: training, "round 3 done", ready for the next
+    assert agent.state == "training" and agent.detail == "round 3 done" and agent.in_job[0] == "job_x" and not agent.in_round
     assert torch.is_tensor(theta["net.1.weight"])

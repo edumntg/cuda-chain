@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import shutil
 import threading
 import time
 import uuid
@@ -76,7 +77,10 @@ class Agent:
         self.creds: MachineCredentials | None = None
         self.state = "idle"
         self.detail = ""
-        self.last_round_note: tuple[str, float] = ("", 0.0)
+        # (job id, since, round timeout) while the machine waits for the next round of a running
+        # job: it reports `training` and asks for work, instead of flipping to idle after each round
+        self.in_job: tuple[str, float, int] | None = None
+        self.in_round = False
         self.job_id: str | None = None
         self.round: int | None = None
         self.step = 0
@@ -131,17 +135,22 @@ class Agent:
 
     # ----- heartbeat ---------------------------------------------------------------
 
-    def heartbeat(self) -> dict[str, Any]:
+    def heartbeat(self, ready: bool = False) -> dict[str, Any]:
+        """`ready` asks the server for a round; only the main loop sets it, so a background
+        heartbeat can never take an assignment the loop would not see."""
         with self._hb_lock:
-            return self._heartbeat()
+            return self._heartbeat(ready)
 
-    def _heartbeat(self) -> dict[str, Any]:
+    def _heartbeat(self, ready: bool = False) -> dict[str, Any]:
         assert self.client is not None
         metrics = telemetry.metrics()
         metrics.update({"step": self.step, "steps_total": self.steps_total, "session_rounds": self.session_rounds, "session_samples": self.session_samples})
         with self._lock:
-            body = {"status": self.state, "status_detail": self.detail, "job_id": self.job_id, "round": self.round, "metrics": metrics, "logs": self.buffer.drain()}
+            body = {"status": self.state, "status_detail": self.detail, "job_id": self.job_id, "round": self.round, "metrics": metrics, "logs": self.buffer.drain(), "ready": ready}
         reply = self.client.heartbeat(body)
+        job = reply.get("job")
+        if isinstance(job, dict) and job.get("status") not in (None, "running") and self.in_job and self.in_job[0] == body["job_id"]:
+            self.in_job = None  # the job ended: the loop goes idle at its next turn
         self.heartbeat_interval = reply.get("interval", 10)
         self.idle_interval = reply.get("idle_interval", 3)
         if reply.get("policy"):
@@ -162,7 +171,7 @@ class Agent:
 
     def _heartbeat_thread(self) -> None:
         while not self.stop_event.is_set():
-            if self.state == "training":  # the main loop idles only between rounds
+            if self.in_round:  # between rounds the main loop beats
                 try:
                     self.heartbeat()
                 except ApiError as e:
@@ -194,6 +203,8 @@ class Agent:
         with self._lock:
             self.state, self.job_id, self.round, self.step, self.steps_total = "training", job_id, rnd, 0, spec.recipe.inner_steps
             self.detail = f"shard {a['shard']['index']}"
+            self.in_round = True
+            self.in_job = (job_id, time.time(), spec.requirements.round_timeout_s)
         log.info("round %s of %s: shard %s (%s samples)", rnd, spec.name, a["shard"]["index"], a["shard"]["n"])
         try:  # tell the server now; a short round can end before the next scheduled heartbeat
             self.heartbeat()
@@ -218,17 +229,15 @@ class Agent:
         self.after_reveal(job_id, rnd, result)
         t_done = time.perf_counter()
         self.session_rounds += 1
-        self.last_round_note = (f"round {rnd} of {spec.name} done, waiting for the next", time.time())
+        with self._lock:
+            self.in_round = False
+            self.in_job = (job_id, time.time(), spec.requirements.round_timeout_s)
+            self.detail = f"round {rnd} done"
         self.session_samples += result.samples
         log.info(
             "round %s done: loss %.3f→%.3f, %s bytes up, fetch %.1fs train %.1fs upload %.1fs",
             rnd, result.loss_start, result.loss_end, f"{len(encoded):,}", t_fetch - t0, t_train - t_fetch, t_done - t_train,
         )
-
-    def _between_rounds(self) -> str:
-        """The idle detail for a minute after a round, so the fleet shows the machine is still in the job."""
-        note, at = self.last_round_note
-        return note if note and time.time() - at < 60 else ""
 
     def availability(self) -> tuple[bool, str]:
         """Org policy first, then local tightening. Returns (available, reason)."""
@@ -270,6 +279,7 @@ class Agent:
         hb = threading.Thread(target=self._heartbeat_thread, name="plasmon-heartbeat", daemon=True)
         hb.start()
         log.info("trainer %s on %s, device %s", self.name, self.server, self.device)
+        _warn_if_cuda_missing()
         try:
             while not self.stop_event.is_set():
                 if self.deadline and time.time() > self.deadline:
@@ -280,11 +290,17 @@ class Agent:
                     break
                 avail, why = self.availability()
                 with self._lock:
-                    self.state = "paused" if self.paused else ("idle" if avail else "unavailable")
-                    self.job_id = self.round = None
-                    self.detail = "paused by admin" if self.paused else (why or self._between_rounds())
+                    if self.paused:
+                        self.state, self.detail, self.job_id, self.round = "paused", "paused by admin", None, None
+                    elif not avail:
+                        self.state, self.detail, self.job_id, self.round = "unavailable", why, None, None
+                    elif self.in_job and time.time() - self.in_job[1] < self.in_job[2] + 30:
+                        self.state = "training"  # between rounds of a job that still runs
+                    else:
+                        self.in_job = None
+                        self.state, self.detail, self.job_id, self.round = "idle", "", None, None
                 try:
-                    reply = self.heartbeat()
+                    reply = self.heartbeat(ready=True)
                 except ApiError as e:
                     if e.status == 401:
                         log.warning("machine token rejected; re-enrolling")
@@ -306,6 +322,7 @@ class Agent:
                     except Exception:
                         log.exception("round failed")
                         with self._lock:
+                            self.in_round = False
                             self.state, self.detail = "error", "round failed, see log"
                         self.stop_event.wait(self.idle_interval)
                 else:
@@ -317,6 +334,22 @@ class Agent:
 
     def stop(self) -> None:
         self.stop_event.set()
+
+
+def _warn_if_cuda_missing() -> None:
+    """An NVIDIA driver is installed but this torch build has no CUDA: the usual case on Windows,
+    where the default wheel is CPU only."""
+    try:
+        import torch
+
+        if torch.cuda.is_available() or shutil.which("nvidia-smi") is None:
+            return
+    except Exception:
+        return
+    log.warning(
+        "an NVIDIA GPU is present but this PyTorch has no CUDA, so the trainer uses the CPU. "
+        "Install the CUDA build: pip install torch --index-url https://download.pytorch.org/whl/cu126"
+    )
 
 
 def fr_digest(data: bytes) -> str:

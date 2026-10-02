@@ -80,6 +80,7 @@ class HeartbeatIn(BaseModel):
     round: int | None = None
     metrics: dict[str, Any] = Field(default_factory=dict)
     logs: list[dict[str, Any]] = Field(default_factory=list)  # [{at, level, message}]
+    ready: bool = False  # asks for a round; idle heartbeats ask implicitly
 
 
 @router.post("/heartbeat")
@@ -101,10 +102,14 @@ def heartbeat(body: HeartbeatIn, machine: db.Machine = Depends(current_machine),
     if machine.draining:
         commands.append({"type": "drain"})
     assignment = None
-    if body.status == "idle":
+    if body.status == "idle" or body.ready:
         a = state.engine.try_assign(session, machine)
         if a is not None:
             assignment = a.as_dict()
+    job_info = None
+    if body.job_id:
+        j = session.get(db.Job, body.job_id)
+        job_info = {"status": j.status, "round": j.round_index} if j is not None else {"status": "unknown", "round": None}
     session.commit()
     state.bus.publish("fleet", {"event": "heartbeat", "node": machine.node_id, "status": body.status, "job": body.job_id, "round": body.round})
     if body.status == "error" and was != "error":
@@ -116,6 +121,7 @@ def heartbeat(body: HeartbeatIn, machine: db.Machine = Depends(current_machine),
         "idle_interval": state.cfg.policy.idle_poll_interval_s,
         "commands": commands,
         "assignment": assignment,
+        "job": job_info,
         "policy": policy.load(session, state.cfg.policy.defaults).model_dump(mode="json"),
     }
 

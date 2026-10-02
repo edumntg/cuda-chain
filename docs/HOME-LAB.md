@@ -140,8 +140,18 @@ py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
 From `cmd` instead of PowerShell, run the first line as
 `powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"`.
 
-If `git` is not installed, install it from https://git-scm.com first. Open a new
-PowerShell window, then check:
+If `git` is not installed, install it from https://git-scm.com first.
+
+If the PC has an NVIDIA GPU, install the CUDA build of PyTorch, because the default
+Windows wheel is CPU only. The NVIDIA driver is enough; the CUDA toolkit is not needed:
+
+```powershell
+py -m pip install torch --index-url https://download.pytorch.org/whl/cu126
+py -c "import torch; print(torch.cuda.is_available())"
+```
+
+The second line must print `True`. Without it the trainer prints a warning at start and
+uses the CPU. Open a new PowerShell window, then check:
 
 ```powershell
 plasmon --version
@@ -227,10 +237,10 @@ and which machine trained each round. Press `q` to leave; the job continues.
 How the two machines share the work: when a round opens, every idle machine that fits
 the job takes a shard of it. The server does not close a round with fewer trainers than
 there are idle machines until the slower one had two idle polls to join (about 8 seconds),
-so a fast Mac does not take every round alone. Between rounds a machine is idle for a few
-seconds; the dashboard keeps it in the job's box and shows "between rounds", and the fleet
-table shows "round 7 of mnist-home done, waiting for the next". The job page explains a
-real wait with a sentence such as "1 idle machine does not meet the job requirements".
+so a fast Mac does not take every round alone. Between rounds a machine stays `training`
+with the detail `round 7 done` until the next round starts, and goes back to `idle` when
+the job ends. The job page explains a real wait with a sentence such as "1 free machine
+does not meet the job requirements: device cuda".
 
 ```bash
 plasmon job watch job_3f2a9c1e0b7d
@@ -306,7 +316,8 @@ the two runs on the **Jobs** page.
 |---|---|---|
 | `plasmon: command not found` after the install | The install directory is not on the PATH yet | Open a new terminal window. The installer prints the PATH line to add if needed. |
 | `Program 'powershell.exe' failed to run: Access is denied` | A second PowerShell was started from inside PowerShell, often in an elevated window | Run the `irm ... | iex` line directly, in a normal PowerShell window. |
-| The job stays at `waiting` and the machine shows `idle` | Nobody qualifies for the round | Open the job page or run `plasmon job status <id>`: the `waiting:` line says why, for example `1 idle machine does not meet the job requirements: device cuda`. Check that the trainer logged in to the same server address that the dashboard shows. |
+| The job stays at `waiting` and the machine shows `idle` | Nobody qualifies for the round | Open the job page or run `plasmon job status <id>`: the `waiting:` line says why, for example `1 free machine does not meet the job requirements: device cuda`. Check that the trainer logged in to the same server address that the dashboard shows. |
+| `plasmon fleet` shows `cpu` for a PC with an NVIDIA GPU, or the trainer warns `this PyTorch has no CUDA` | The default Windows wheel of PyTorch is CPU only | `py -m pip install torch --index-url https://download.pytorch.org/whl/cu126`, then restart the trainer. |
 | `the plasmon Python package was not found` | The engine is not installed for the Python the CLI found | Run the `pip install` line again. Set `PLASMON_PYTHON` to the right interpreter if you have several. |
 | The browser says "didn't send any data" or `ERR_EMPTY_RESPONSE` on an address like `172.16.30.1` | That address is a VPN tunnel or a virtual machine adapter, not the Wi-Fi | On the Mac use `http://localhost:7117`. From the PC use the `en0` address (`ipconfig getifaddr en0`). With a corporate VPN, the PC may need the VPN off, or the Mac's Wi-Fi address published with `--public-url`. |
 | `cannot reach http://192.168.1.20:7117` on the PC | Firewall on the Mac, or a different network | On the Mac, System Settings, Network, Firewall: allow Python. Make sure both computers use the same Wi-Fi. |

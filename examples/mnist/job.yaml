@@ -1,0 +1,22 @@
+# A small job for a home network: one CNN on MNIST, trained by two or more machines.
+name: mnist-home
+model:
+  arch: mnist_cnn
+dataset:
+  source: builtin://mnist
+  shard_size: 1000
+  eval_fraction: 0.1
+recipe:
+  algorithm: diloco
+  inner_steps: 50
+  batch_size: 64
+  inner_optimizer: {name: adamw, lr: 2.0e-3}
+  outer_optimizer: {name: nesterov, lr: 0.7, momentum: 0.9}
+  compression: {name: topk, topk: 0.1, error_feedback: true}
+requirements:
+  device: any
+  min_trainers: 1
+  max_trainers: 8
+  round_timeout_s: 300
+budget:
+  rounds: 20

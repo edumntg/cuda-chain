@@ -1,0 +1,21 @@
+[package]
+name = "plasmon-cli"
+description = "plasmon command line: jobs, trainers, fleet, dashboard"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "plasmon"
+path = "src/main.rs"
+
+[dependencies]
+plasmon-core = { path = "../plasmon-core" }
+anyhow.workspace = true
+clap = { version = "4", features = ["derive"] }
+clap_complete = "4"
+dirs = "6"
+serde.workspace = true
+serde_json.workspace = true
+toml = "0.8"

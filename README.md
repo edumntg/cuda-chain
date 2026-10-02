@@ -464,11 +464,11 @@ manifest. Targets: linux-x86_64, linux-arm64, darwin-arm64, windows-x86_64 for t
 (training on Windows needs WSL2 for CUDA).
 
 **The trainer is a separate process.** The trainer is Python (PyTorch) and is launched
-and supervised by the CLI: `plasmon trainer start` finds or installs the `plasmon` Python package
-in an isolated environment (through `uv` when present), starts it, and talks to it over a
-local socket. The Python package uses the Rust core through a native extension
-(`plasmon_core`, built with PyO3 and maturin) for signing, hashing, Δ framing and blob
-transfer, so there is exactly one implementation of the wire protocol.
+and supervised by the CLI: `plasmon trainer start` finds the `plasmon` Python package
+(`python -m plasmon`), starts it, and talks to it over a local socket. The protocol has a
+reference implementation in Python (`plasmon.core`) and a Rust implementation in
+`plasmon-core`; shared test vectors keep the two byte-identical. Every engine command also
+works without the binary through `python -m plasmon`, with plain text output.
 
 ### 5.2 Roles and permissions
 
@@ -788,7 +788,7 @@ office, GPU class); tags drive filters, scheduling and quotas.
 
 | Layer | Choice | Why |
 |---|---|---|
-| Trainer runtime | **Python 3.11+, PyTorch 2.x, CUDA 12.x** (bf16 autocast, `torch.compile` optional); launched and supervised by the CLI, protocol via `plasmon_core` | Where every model and every volunteer already is. CPU and Apple MPS backends supported for small jobs and for developer testing; CUDA is the first-class target |
+| Trainer runtime | **Python 3.11+, PyTorch 2.x, CUDA 12.x** (bf16 autocast, `torch.compile` optional); launched and supervised by the CLI | Where every model and every volunteer already is. CPU and Apple MPS backends supported for small jobs and for developer testing; CUDA is the first-class target |
 | Training algorithm | **DiLoCo** inner/outer loop; reference from Prime Intellect's `OpenDiLoCo` / `prime` (Apache-2.0) | Proven at 1–100 B scale over WAN |
 | Compression | **SparseLoCo / DeMo** style top-k + low-bit + error feedback; reference code from Templar (MIT) and Nous Psyche (Apache-2.0/MIT) | 100–500× bandwidth reduction, convergence proven |
 | Tensor wire format | **safetensors** for checkpoints; custom flat binary frame (BLAKE3 hash, dtype, shape, packed indices + values) for compressed Δ | Zero-copy binary; tensors never travel as text |
@@ -801,12 +801,12 @@ office, GPU class); tags drive filters, scheduling and quotas.
 | Settlement (Phase 3) | **Solidity on Base** (OpenZeppelin, Foundry) or **Anchor on Solana**; Merkle-root payouts | Use an existing chain; both have public reference implementations in this space |
 | Sandbox (Phase 3) | **Docker** with `--gpus`, no network, read-only rootfs, seccomp; **gVisor** when available | Standard GPU isolation story |
 | CLI | **Rust**: `clap`, `ratatui` + `crossterm`, `tokio`, `reqwest` (rustls, HTTP/2, HTTP/3), `ed25519-dalek`, `blake3`, `keyring`, `tachyonfx`; one static binary per platform; `plasmon daemon` mode keeps a warm connection | 3 ms start-up measured; dependency-free install; same language as Iroh and blake3 |
-| Protocol core | Rust crate **`plasmon-core`**: identity, signatures, content addressing, Δ frame format, blob client, API types; exposed to Python as **`plasmon_core`** via PyO3 / maturin | One implementation of the wire protocol shared by CLI, daemon and trainer |
-| SDK | Python package `plasmon` (`plasmon.Client`) on top of `plasmon_core`; TypeScript SDK for the web later | Shared by CLI-launched trainer and user scripts |
+| Protocol core | Python `plasmon.core` (reference) and Rust crate **`plasmon-core`**: identity, signatures, canonical JSON, content addressing, Δ frames, shard assignment; cross-checked by shared test vectors | Two implementations, one specification (`docs/PROTOCOL.md`) |
+| SDK | Python package `plasmon` (`plasmon.Client`); TypeScript SDK for the web later | Shared by CLI-launched trainer and user scripts |
 | Web dashboard | **Next.js** (React, TypeScript) + **Tailwind** + **shadcn/ui**; charts with **Recharts**; live updates over **SSE**; deployed on Vercel or beside the coordinator | Standard, fast to build, good charting; the API stays in Python |
 | Accounts and auth | Coordinator owns accounts: email + password / magic link, GitHub and Google OAuth, **OIDC SSO with group→role mapping** for self-hosted orgs (**authlib**), device-code flow for the CLI, scoped API tokens, RBAC (Owner / Admin / Operator / Member / Viewer), audit log, passkeys later | One identity for CLI and web; companies bring their own IdP |
 | Payments | **Stripe** (cards, subscriptions for plans, Connect for fiat payouts later); **USDC** via Coinbase Commerce in Phase 2, direct on-chain in Phase 3 | Credits are the unit; fiat and crypto are just on-ramps |
-| Packaging / ops | Cargo workspace + `pyproject.toml` (uv/maturin), signed release manifests + `install.sh`, Docker images for coordinator and trainer, `docker compose` dev stack, GitHub Actions with a `hyperfine` start-up budget check, **pytest** two-trainer integration test | Testable from day one |
+| Packaging / ops | Cargo workspace + `pyproject.toml` (uv/hatch), signed release manifests + `install.sh`, Docker images for coordinator and trainer, `docker compose` dev stack, GitHub Actions with a `hyperfine` start-up budget check, **pytest** two-trainer integration test | Testable from day one |
 | Observability | Structured logs (structlog), Prometheus metrics, Grafana dashboard: loss per round, trainers online, bytes per round, score distribution | Trainers need a public leaderboard and requesters need a loss curve |
 | Fleet telemetry | 10 s heartbeats and batched logs over the daemon's long-lived connection; GPU via NVML (`nvml-wrapper`), CPU/RAM/battery/idle via `sysinfo` in the Rust daemon; stored in Postgres (10 s for 24 h, 1 min for 90 d, TimescaleDB optional); fan-out to web and CLI over SSE | Powers Fleet, My machine and every `--watch` view |
 | Self-hosting bundle | `plasmon server init` → Docker Compose (api, worker, Postgres, Redis, MinIO, web, Caddy auto-TLS, Prometheus/Grafana profile) or Helm chart; org policies (availability windows, caps, idle detection); `plasmon trainer enable` installs systemd / launchd / scheduled-task services | One-command private deployment (§6) |
@@ -958,26 +958,28 @@ One repository: a Rust workspace for the CLI and protocol core, a Python package
 ```
 plasmon/
 ├── Cargo.toml                    # rust workspace
+├── pyproject.toml                # python package `plasmon` (engine: core, trainer, coordinator)
 ├── crates/
-│   ├── plasmon-core/                 # identity (ed25519), blake3 content addressing, Δ frames, blob client, API types
-│   ├── plasmon-cli/                  # `plasmon` binary: clap commands, ratatui TUI, daemon mode, self-update
-│   └── plasmon-py/                   # PyO3 bindings -> python extension `plasmon_core` (maturin)
+│   ├── plasmon-core/             # identity (ed25519), blake3 content addressing, canonical JSON, Δ frame header
+│   └── plasmon-cli/              # `plasmon` binary: clap commands, ratatui TUI, self-update
 ├── python/
-│   └── plasmon/                      # trainer, validator, SDK (PyTorch); imports plasmon_core
-│       ├── train/                # diloco inner/outer loop, sparseloco/demo compression
-│       ├── trainer/              # agent: enrol, pull, train, commit-reveal, upload
-│       ├── validator/            # agent: cheap checks, gauntlet scoring, re-execution
-│       ├── data/                 # webdataset sharding, deterministic assignment
-│       └── models/               # allow-listed architectures (llama, gpt2, resnet, lora)
-├── coordinator/                  # fastapi: accounts, jobs, round state machine, aggregation, ledger, SSE
-├── web/                          # next.js dashboard: public pages, account, credits, jobs, trainers
-├── contracts/                    # phase 3: foundry project (escrow, payouts, bonds)
-├── install/                      # install.sh, release manifests, homebrew formula
-├── docker-compose.yml            # postgres, redis, minio, coordinator, 2× trainer
-├── tests/                        # two-trainer integration test, CLI end-to-end, start-up budget
+│   ├── plasmon/
+│   │   ├── core/                 # reference protocol: identity, canonical JSON, frames, job spec, assignment
+│   │   ├── train/                # diloco inner/outer loop, compression, allow-listed models, data shards
+│   │   ├── trainer/              # agent: enrol, heartbeat, pull, train, commit-reveal, upload
+│   │   ├── validator/            # scoring: cheap checks, loss-delta scoring, re-execution
+│   │   └── coordinator/          # fastapi: accounts, jobs, rounds, aggregation, ledger, SSE, web dashboard
+│   └── tests/                    # unit tests, two-trainer integration test, cross-language vectors
+├── deploy/                       # docker compose bundle, Dockerfile, Caddyfile, helm chart
+├── install/                      # install.sh, install.ps1, release manifest
+├── examples/                     # mnist job and eval script
+├── scripts/                      # start-up budget, vector generation
 └── docs/
-    ├── LANDSCAPE.md              # competitor and research notes with sources
-    └── PROTOCOL.md               # (to write) message formats and round state machine
+    ├── PROTOCOL.md               # wire formats: identity, canonical JSON, frames, commit-reveal
+    ├── QUICKSTART.md             # one machine: run the server, connect, train
+    ├── HOME-LAB.md               # two machines at home (Mac + Windows), MNIST end to end
+    ├── SELF-HOSTING.md           # company deployment
+    └── LANDSCAPE.md              # competitor and research notes with sources
 ```
 
 ## 12. Roadmap

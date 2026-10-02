@@ -7,6 +7,7 @@
     <div><dt>eval acc</dt><dd>{{ job.last_eval_acc|pct }}</dd></div>
     <div><dt>parameters</dt><dd>{{ job.param_count|num }}</dd></div>
     <div><dt>shards</dt><dd>{{ job.shards|length }}</dd></div>
+    {% if job.credits_spent %}<div><dt>credits spent</dt><dd>{{ job.credits_spent|num }}</dd></div>{% endif %}
   </dl>
 </div>
 <div class="chart" id="loss-chart" data-series='{{ series|tojson }}' role="img" aria-label="Evaluation loss and accuracy per round">

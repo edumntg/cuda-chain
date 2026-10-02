@@ -197,6 +197,31 @@ Other people become members on their first login.
 Retention defaults: heartbeats 24 hours, trainer logs 7 days. Change `retention` in
 `plasmon-server.yaml` and restart.
 
+## Credits and chargeback
+
+Credits are off by default. Turn them on to attribute compute to teams, or to pay
+volunteers on a public network:
+
+```yaml
+credits:
+  enabled: true
+  fee_pct: 10            # kept by the server, shown as the fee account
+  grant_on_register: 0   # welcome credits for a new account
+```
+
+- A job sets its price in `budget.credits_per_1k_samples`. Each round moves
+  `price × accepted samples / 1000` from the job owner to the owners of the machines
+  that trained, weighted by score × samples, minus the fee.
+- A job owner needs a positive balance to submit a priced job, and `budget.max_credits`
+  or more when that is set. A job stops with `out of credits` when the owner's balance
+  reaches zero.
+- Admins grant credits on **Credits** or with `plasmon credits grant <email> <amount>`.
+- Export movements for chargeback: `plasmon credits export --since-days 30 -o march.csv`
+  or the link on the Credits page.
+
+No payment provider is connected. Buying credits with a card or a token transfer is a
+later milestone; the entry table and the API are the place to connect one.
+
 ## Network and data
 
 - Trainers open connections to the server only. No port is opened on a trainer.

@@ -74,7 +74,8 @@ class Requirements(StrictModel):
 
 class Budget(StrictModel):
     rounds: int = Field(default=20, ge=1)
-    max_credits: int | None = None
+    max_credits: int | None = Field(default=None, ge=0, description="stop the job when this many credits were spent")
+    credits_per_1k_samples: float = Field(default=0.0, ge=0, description="price paid per 1,000 accepted samples; 0 when credits are off")
 
 
 class JobSpec(StrictModel):

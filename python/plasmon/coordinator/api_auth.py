@@ -68,6 +68,10 @@ def register_user(session: Session, state, email: str, password: str, name: str,
         inv.used_by = user.id
         inv.used_at = db.now()
     session.add(db.AuditEvent(actor_id=user.id, action="user.register", target=user.id, detail={"role": role, "invite": bool(inv)}))
+    if state.cfg.credits.enabled and state.cfg.credits.grant_on_register > 0:
+        from . import credits
+
+        credits.grant(session, user, state.cfg.credits.grant_on_register, "welcome grant", None)
     session.commit()
     return user
 

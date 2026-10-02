@@ -95,6 +95,11 @@ enum Command {
         #[command(subcommand)]
         cmd: LedgerCmd,
     },
+    /// Credits: your balance and movements; grants and balances for admins.
+    Credits {
+        #[command(subcommand)]
+        cmd: Option<CreditsCmd>,
+    },
     /// Full-screen view with tabs: jobs, fleet, my machines, server.
     Dashboard,
     /// Print shell completions.
@@ -189,6 +194,19 @@ enum UsersCmd {
     Enable {
         email: String,
     },
+}
+
+#[derive(Subcommand)]
+enum CreditsCmd {
+    /// Give credits to a user (admin).
+    Grant {
+        email: String,
+        amount: i64,
+        #[arg(long, default_value = "")]
+        memo: String,
+    },
+    /// Balances of every user (admin).
+    Users,
 }
 
 #[derive(Subcommand)]
@@ -437,6 +455,15 @@ fn run() -> Result<i32> {
         },
         Some(Command::Ledger { cmd }) => match cmd {
             LedgerCmd::Verify => commands::ledger_verify(server, cli.json),
+        },
+        Some(Command::Credits { cmd }) => match cmd {
+            None => commands::credits_me(server, cli.json).map(|_| 0),
+            Some(CreditsCmd::Grant {
+                email,
+                amount,
+                memo,
+            }) => commands::credits_grant(server, &email, amount, &memo).map(|_| 0),
+            Some(CreditsCmd::Users) => commands::credits_users(server, cli.json).map(|_| 0),
         },
         Some(Command::Dashboard) => {
             if plain || cli.json {

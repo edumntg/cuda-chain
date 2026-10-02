@@ -11,7 +11,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .. import __version__
-from . import api_auth, api_fleet, auth, db, ledger, policy
+from . import api_auth, api_credits, api_fleet, auth, credits, db, ledger, policy
 from .config import OrgPolicy
 from .deps import Principal, get_session, get_state, principal_optional
 
@@ -423,7 +423,8 @@ def settings_policy(request: Request, windows_text: str = Form(""), pause_on_bat
 def leaderboard_page(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
     need_user(p)
     rows = session.scalars(select(db.Machine).where(db.Machine.samples_verified > 0).order_by(db.Machine.samples_verified.desc()).limit(100)).all()
-    return render(request, "leaderboard.html", p, rows=rows)
+    earned = credits.earned_by_machine(session) if request.app.state.plasmon.cfg.credits.enabled else None
+    return render(request, "leaderboard.html", p, rows=rows, earned=earned)
 
 
 @router.get("/account", response_class=HTMLResponse)
@@ -453,3 +454,28 @@ def account_revoke(token_id: str, p: Principal = Depends(principal_optional), se
         session.add(db.AuditEvent(actor_id=user.id, action="token.revoke", target=token_id))
         session.commit()
     return RedirectResponse("/account?result=revoked", status_code=303)
+
+
+@router.get("/credits", response_class=HTMLResponse)
+def credits_page(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    user = need_user(p)
+    is_admin = auth.role_at_least(user.role, "admin")
+    return render(
+        request, "credits.html", p,
+        enabled=state.cfg.credits.enabled, unit=state.cfg.credits.unit, fee_pct=state.cfg.credits.fee_pct,
+        balance=credits.balance(session, user.id), entries=credits.entries_for(session, user.id, 100),
+        all_balances=credits.balances(session) if is_admin else None, is_admin=is_admin,
+        result=request.query_params.get("result", ""),
+    )
+
+
+@router.post("/credits/grant")
+def credits_grant(email: str = Form(), amount: int = Form(), memo: str = Form(""), p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
+    user = need_user(p)
+    try:
+        api_credits.grant(api_credits.GrantIn(email=email, amount=amount, memo=memo), user, session)
+    except HTTPException as e:
+        return RedirectResponse(f"/credits?result=error:{e.detail}", status_code=303)
+    except ValueError as e:
+        return RedirectResponse(f"/credits?result=error:{e}", status_code=303)
+    return RedirectResponse("/credits?result=granted", status_code=303)

@@ -453,6 +453,32 @@ def cmd_trainer_service(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_credits(args: argparse.Namespace) -> int:
+    client = _client(args)
+    action = getattr(args, "credits_action", None)
+    if action == "grant":
+        out = client.post("/v1/credits/grant", {"email": args.email, "amount": args.amount, "memo": args.memo or ""})
+        _print(args, out, f"granted {out['granted']} to {out['email']}; balance now {out['balance']}")
+        return 0
+    if action == "users":
+        rows = client.get("/v1/credits/users")
+        _print(args, rows, _fmt_table([[r["email"], r["role"], r["balance"]] for r in rows], ["user", "role", "balance"]))
+        return 0
+    if action == "export":
+        text = client._http.get("/v1/credits/export.csv", params={"since_days": args.since_days}, headers=client._headers()).text
+        out_path = Path(args.output or f"plasmon-credits-{args.since_days}d.csv")
+        out_path.write_text(text, encoding="utf-8")
+        print(f"wrote {out_path} ({text.count(chr(10)) - 1} entries)")
+        return 0
+    me = client.get("/v1/credits/me", limit=30)
+    if not me["enabled"]:
+        _print(args, me, "credits are off on this server")
+        return 0
+    rows = [[str(e["at"])[:19], e["kind"], e["amount"], e["job_id"] or "", e["memo"]] for e in me["entries"]]
+    _print(args, me, f"balance: {me['balance']} {me['unit']}s\n" + (_fmt_table(rows, ["when (UTC)", "kind", "amount", "job", "memo"]) if rows else "no movements yet"))
+    return 0
+
+
 # ----- parser ----------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -580,6 +606,20 @@ def build_parser() -> argparse.ArgumentParser:
         q = users.add_parser(name, parents=[common])
         q.add_argument("email")
         q.set_defaults(handler=cmd_users)
+
+    p = sub.add_parser("credits", help="your balance and movements", parents=[common])
+    p.set_defaults(handler=cmd_credits)
+    cred = p.add_subparsers(dest="credits_action")
+    q = cred.add_parser("grant", parents=[common])
+    q.add_argument("email")
+    q.add_argument("amount", type=int)
+    q.add_argument("--memo", default="")
+    q.set_defaults(handler=cmd_credits)
+    cred.add_parser("users", parents=[common]).set_defaults(handler=cmd_credits)
+    q = cred.add_parser("export", parents=[common])
+    q.add_argument("--since-days", type=int, default=30)
+    q.add_argument("-o", "--output")
+    q.set_defaults(handler=cmd_credits)
 
     p = sub.add_parser("audit", help="who did what (operator)", parents=[common])
     p.add_argument("--since-hours", type=int, default=24)

@@ -247,6 +247,21 @@ class Invite(Base):
     used_at: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
 
 
+class CreditEntry(Base):
+    """One movement of credits. Balance of a user = sum of amount over their entries."""
+
+    __tablename__ = "credits"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    at: Mapped[dt.datetime] = mapped_column(DateTime, default=now, index=True)
+    user_id: Mapped[str | None] = mapped_column(ForeignKey("users.id"), nullable=True, index=True)  # None: the protocol fee account
+    machine_id: Mapped[str | None] = mapped_column(ForeignKey("machines.id"), nullable=True)
+    job_id: Mapped[str | None] = mapped_column(ForeignKey("jobs.id"), nullable=True, index=True)
+    round_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    amount: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16))  # earn|spend|grant|fee|adjust
+    memo: Mapped[str] = mapped_column(Text, default="")
+
+
 class Setting(Base):
     __tablename__ = "settings"
     key: Mapped[str] = mapped_column(String(64), primary_key=True)

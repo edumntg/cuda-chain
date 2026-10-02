@@ -458,12 +458,20 @@ keychain (fallback: `~/.config/plasmon/credentials`, mode 600). The machine keyp
 `plasmon init` is registered to the account so earnings from that machine accrue to the right
 wallet. Tokens are revocable from the dashboard.
 
-**Install.** `curl -fsSL https://plasmon.dev/install.sh | sh` reads a per-platform manifest,
-downloads the binary, verifies its SHA-256, installs to `~/.local/bin`, installs shell
-completions and adds the directory to `PATH` if needed. Also: a Homebrew tap,
-`cargo binstall plasmon`, and `winget` later. `plasmon update` self-updates from the same signed
-manifest. Targets: linux-x86_64, linux-arm64, darwin-arm64, windows-x86_64 for the client
-(training on Windows needs WSL2 for CUDA).
+**Install.** Today the binaries come from GitHub Releases:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.sh | sh      # Linux, macOS
+powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"   # Windows
+python -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"           # the engine (server, trainer)
+```
+
+The script downloads the binary for the platform, checks its SHA-256 against the
+published checksum, installs to `~/.local/bin` (Windows: `%LOCALAPPDATA%\plasmon\bin`) and
+adds the directory to `PATH` if needed. Targets: linux-x86_64, linux-arm64, darwin-arm64,
+darwin-x86_64, windows-x86_64. Later: `plasmon.dev/install.sh`, a Homebrew tap,
+`cargo binstall plasmon`, `winget`, and `plasmon update` from the signed manifest.
+Training on Windows uses the CPU, or WSL2 for CUDA.
 
 **The trainer is a separate process.** The trainer is Python (PyTorch) and is launched
 and supervised by the CLI: `plasmon trainer start` finds the `plasmon` Python package
@@ -660,7 +668,7 @@ everyone should be able to see what is happening.
 
 ```bash
 # on the server
-curl -fsSL https://plasmon.dev/install.sh | sh                  # the same CLI, used here for administration
+curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.sh | sh   # the same CLI, used here for administration
 plasmon server init \
     --domain plasmon.acme.com \
     --storage minio \                                           # or s3://acme-plasmon-blobs
@@ -874,7 +882,7 @@ an artefact (open weights) that proves the network works.
 - **Reference run:** a 150 M Llama-style model on 3–5 B tokens of FineWeb-Edu, DiLoCo
   H=300, bf16, 2 % top-k 2-bit. On 20 consumer GPUs this takes about one to two weeks.
   Publish loss curve and leaderboard live.
-- **Trainer onboarding:** sign up on the dashboard, then `curl -fsSL https://plasmon.dev/install.sh | sh && plasmon login && plasmon trainer start --join <run>`
+- **Trainer onboarding:** sign up on the dashboard, install the CLI and the engine (§5.1), then `plasmon login --server <url> && plasmon trainer start`
   or `docker run plasmon/trainer`. Minimum: NVIDIA GPU with ≥ 8 GB VRAM (RTX 3060 /
   3070 / 4060 Ti and up), Linux or WSL2, 20 Mbit/s upload, driver ≥ 535. Invite codes via
   Discord/GitHub; 10–50 people.

@@ -13,6 +13,7 @@ import datetime as dt
 import logging
 import threading
 import time
+import uuid
 from collections import deque
 from pathlib import Path
 from typing import Any
@@ -177,7 +178,8 @@ class Agent:
         if path.exists():
             return path.read_bytes()
         content = self.client.get_blob(blob_id)
-        tmp = path.with_suffix(".tmp")
+        # Two agents on one computer share this cache: each writer needs its own temp file.
+        tmp = path.with_name(f"{blob_id}.{uuid.uuid4().hex}.tmp")
         tmp.write_bytes(content)
         tmp.replace(path)
         return content

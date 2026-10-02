@@ -97,3 +97,17 @@ pre.log { background: var(--paper-2); border-radius: var(--radius-panel); paddin
   .rail a, button.link { min-height: 44px; display: inline-flex; align-items: center; }
 }
 @media (prefers-reduced-motion: no-preference) { button, .rail a { transition: background 120ms, color 120ms; } }
+
+/* M3: controls on the machine page, forms on users and settings */
+.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 6px 0 10px; }
+button.secondary { background: var(--paper-2); color: var(--ink); border: 1px solid var(--line); }
+a.button { display: inline-block; background: var(--accent); color: var(--accent-ink); padding: 8px 14px; border-radius: var(--radius); text-decoration: none; }
+.inline-form { display: inline-flex; gap: 6px; align-items: center; }
+.row-form { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; }
+.row-form label { min-width: 200px; }
+select, textarea { font: inherit; background: var(--paper); color: var(--ink); border: 1px solid var(--line); border-radius: var(--radius); padding: 6px 8px; }
+textarea { width: 100%; }
+.stack.wide { max-width: 640px; }
+label.check { flex-direction: row; align-items: center; gap: 8px; }
+label.check input { width: auto; }
+tr.muted td { color: var(--ink-2); }

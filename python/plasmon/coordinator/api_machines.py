@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core import identity
-from . import auth, db
+from . import auth, db, policy
 from .deps import current_machine, current_user, get_session, get_state
 from .engine import EngineError
 
@@ -113,6 +113,7 @@ def heartbeat(body: HeartbeatIn, machine: db.Machine = Depends(current_machine),
         "idle_interval": state.cfg.policy.idle_poll_interval_s,
         "commands": commands,
         "assignment": assignment,
+        "policy": policy.load(session, state.cfg.policy.defaults).model_dump(mode="json"),
     }
 
 

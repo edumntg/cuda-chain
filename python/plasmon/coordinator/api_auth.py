@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import datetime as dt
 import secrets
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -16,14 +17,27 @@ from .deps import Principal, current_user, get_session, get_state, principal_opt
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 
 
+def _check_email(value: str) -> str:
+    """One @, a dot in the domain, no spaces. Company TLDs such as .internal are fine."""
+    value = value.strip().lower()
+    local, _, domain = value.partition("@")
+    if not local or not domain or "." not in domain or " " in value or len(value) > 255:
+        raise ValueError("not a valid email address")
+    return value
+
+
+Email = Annotated[str, AfterValidator(_check_email)]
+
+
 class RegisterIn(BaseModel):
-    email: EmailStr
+    email: Email
     password: str = Field(min_length=8, max_length=256)
     name: str = Field(default="", max_length=120)
+    invite: str | None = None
 
 
 class LoginIn(BaseModel):
-    email: EmailStr
+    email: Email
     password: str
     label: str = "cli"
 
@@ -32,25 +46,35 @@ def user_out(user: db.User) -> dict:
     return {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
 
 
-def register_user(session: Session, state, email: str, password: str, name: str) -> db.User:
+def register_user(session: Session, state, email: str, password: str, name: str, invite: str | None = None) -> db.User:
     email = email.lower().strip()
     count = session.scalar(select(func.count()).select_from(db.User))
-    if count and not state.cfg.auth.open_registration:
+    inv = None
+    if invite:
+        inv = session.get(db.Invite, invite)
+        if inv is None or inv.used_by is not None or inv.expires_at < db.now():
+            raise HTTPException(403, "invalid or expired invite")
+        if inv.email and inv.email != email:
+            raise HTTPException(403, "this invite is for another email address")
+    if count and not state.cfg.auth.open_registration and inv is None:
         raise HTTPException(403, "registration is closed; ask an admin for an invite")
     if session.scalar(select(db.User).where(db.User.email == email)):
         raise HTTPException(409, "an account with that email exists")
-    role = "owner" if count == 0 else "member"
+    role = "owner" if count == 0 else (inv.role if inv else "member")
     user = db.User(email=email, name=name, password_hash=auth.hash_password(password), role=role)
     session.add(user)
     session.flush()
-    session.add(db.AuditEvent(actor_id=user.id, action="user.register", target=user.id, detail={"role": role}))
+    if inv is not None:
+        inv.used_by = user.id
+        inv.used_at = db.now()
+    session.add(db.AuditEvent(actor_id=user.id, action="user.register", target=user.id, detail={"role": role, "invite": bool(inv)}))
     session.commit()
     return user
 
 
 @router.post("/register")
 def register(body: RegisterIn, session: Session = Depends(get_session), state=Depends(get_state)):
-    user = register_user(session, state, body.email, body.password, body.name)
+    user = register_user(session, state, body.email, body.password, body.name, body.invite)
     return {"user": user_out(user)}
 
 

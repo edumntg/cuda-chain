@@ -20,6 +20,8 @@ from typing import Any
 import torch
 
 from ..client import ApiError, Client
+from ..coordinator.config import OrgPolicy, Window
+from ..coordinator.policy import available as policy_available
 from ..core import frame as fr
 from ..core.identity import Identity
 from ..core.jobspec import JobSpec
@@ -48,8 +50,21 @@ class LogBuffer(logging.Handler):
 
 
 class Agent:
-    def __init__(self, server: str, user_token: str | None, identity: Identity, name: str, device: str = "any", max_hours: float | None = None):
+    def __init__(
+        self,
+        server: str,
+        user_token: str | None,
+        identity: Identity,
+        name: str,
+        device: str = "any",
+        max_hours: float | None = None,
+        local_windows: list[Window] | None = None,
+        never_on_battery: bool = False,
+    ):
         self.server = server
+        self.local_windows = local_windows or []
+        self.never_on_battery = never_on_battery
+        self.policy = OrgPolicy()
         self.identity = identity
         self.name = name
         self.device_pref = device
@@ -70,6 +85,8 @@ class Agent:
         self.compressors: dict[str, compression.Compressor] = {}
         self.buffer = LogBuffer()
         log.addHandler(self.buffer)
+        if log.getEffectiveLevel() > logging.INFO:  # the buffer needs info lines even when the app did not configure logging
+            log.setLevel(logging.INFO)
         self.blob_cache = cache_dir() / "blobs"
         self.blob_cache.mkdir(parents=True, exist_ok=True)
         self.heartbeat_interval = 3  # the server's value replaces this after the first reply
@@ -120,6 +137,11 @@ class Agent:
         reply = self.client.heartbeat(body)
         self.heartbeat_interval = reply.get("interval", 10)
         self.idle_interval = reply.get("idle_interval", 3)
+        if reply.get("policy"):
+            try:
+                self.policy = OrgPolicy.model_validate(reply["policy"])
+            except ValueError:
+                pass
         for cmd in reply.get("commands", []):
             if cmd["type"] == "pause" and not self.paused:
                 log.info("paused: %s", cmd.get("reason", ""))
@@ -193,6 +215,24 @@ class Agent:
             rnd, result.loss_start, result.loss_end, f"{len(encoded):,}", t_fetch - t0, t_train - t_fetch, t_done - t_train,
         )
 
+    def availability(self) -> tuple[bool, str]:
+        """Org policy first, then local tightening. Returns (available, reason)."""
+        ok, reason = policy_available(self.policy)
+        if not ok:
+            return False, reason
+        if self.local_windows:
+            ok, reason = policy_available(OrgPolicy(windows=self.local_windows))
+            if not ok:
+                return False, reason.replace("outside window", "outside your window")
+        if self.policy.pause_on_battery or self.never_on_battery:
+            try:
+                batt = telemetry.psutil.sensors_battery()
+            except Exception:
+                batt = None
+            if batt is not None and not batt.power_plugged:
+                return False, "on battery"
+        return True, ""
+
     # ----- main loop ---------------------------------------------------------------
 
     def run(self) -> None:
@@ -208,10 +248,11 @@ class Agent:
                 if self.draining:
                     log.info("drained, stopping")
                     break
+                avail, why = self.availability()
                 with self._lock:
-                    self.state = "paused" if self.paused else "idle"
+                    self.state = "paused" if self.paused else ("idle" if avail else "unavailable")
                     self.job_id = self.round = None
-                    self.detail = "paused by admin" if self.paused else ""
+                    self.detail = "paused by admin" if self.paused else why
                 try:
                     reply = self.heartbeat()
                 except ApiError as e:
@@ -227,7 +268,7 @@ class Agent:
                     self.stop_event.wait(5)
                     continue
                 assignment = reply.get("assignment")
-                if assignment and not self.paused:
+                if assignment and not self.paused and avail:
                     try:
                         self.run_assignment(assignment)
                     except ApiError as e:

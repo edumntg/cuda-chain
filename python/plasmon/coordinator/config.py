@@ -15,8 +15,39 @@ from ..paths import data_dir
 
 class BlobStoreConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    kind: Literal["local"] = "local"
-    path: str | None = None  # default: <data_dir>/blobs
+    kind: Literal["local", "s3"] = "local"
+    path: str | None = None  # local: default <data_dir>/blobs
+    bucket: str | None = None  # s3
+    endpoint_url: str | None = None  # s3: MinIO or another S3-compatible service
+    region: str = "us-east-1"
+    access_key: str | None = None  # default: AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY
+    secret_key: str | None = None
+    prefix: str = "blobs/"
+
+
+class OidcConfig(BaseModel):
+    """Single sign-on through OpenID Connect. Groups map to roles."""
+
+    model_config = ConfigDict(extra="forbid")
+    issuer: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    scopes: str = "openid email profile"
+    groups_claim: str = "groups"
+    admin_group: str | None = None
+    operator_group: str | None = None
+    auto_create_users: bool = True
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.issuer and self.client_id)
+
+
+class RetentionConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    heartbeats_hours: int = 24
+    logs_days: int = 7
+    cleanup_interval_s: int = 300
 
 
 class AuthConfig(BaseModel):
@@ -27,13 +58,31 @@ class AuthConfig(BaseModel):
     device_code_ttl_s: int = 600
 
 
-class PolicyConfig(BaseModel):
-    """Org defaults for trainers. A user can tighten these, not loosen them."""
+class Window(BaseModel):
+    """A weekly availability window. `days` uses mon..sun; `end` before `start` crosses midnight."""
 
+    model_config = ConfigDict(extra="forbid")
+    days: list[Literal["mon", "tue", "wed", "thu", "fri", "sat", "sun"]]
+    start: str = Field(pattern=r"^\d{2}:\d{2}$")
+    end: str = Field(pattern=r"^\d{2}:\d{2}$")
+
+
+class OrgPolicy(BaseModel):
+    """Org defaults for trainers. A user can tighten these, not loosen them.
+    Stored in the settings table so an Admin can change them from the dashboard."""
+
+    model_config = ConfigDict(extra="forbid")
+    windows: list[Window] = Field(default_factory=list, description="empty means always available")
+    pause_on_battery: bool = True
+    drain_at_window_end: bool = True
+    cpu_threads_cap: int | None = None
+
+
+class PolicyConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     heartbeat_interval_s: int = 10
     idle_poll_interval_s: int = 3
-    pause_on_battery: bool = True
+    defaults: OrgPolicy = OrgPolicy()
 
 
 class ServerConfig(BaseModel):
@@ -47,7 +96,9 @@ class ServerConfig(BaseModel):
     db_url: str | None = None  # default: sqlite:///<data_dir>/plasmon.sqlite3
     blobs: BlobStoreConfig = BlobStoreConfig()
     auth: AuthConfig = AuthConfig()
+    oidc: OidcConfig = OidcConfig()
     policy: PolicyConfig = PolicyConfig()
+    retention: RetentionConfig = RetentionConfig()
     run_worker: bool = True  # the round scheduler runs inside the API process
     tick_interval_s: float = 1.0
 
@@ -81,6 +132,16 @@ def load(path: Path | None = None) -> ServerConfig:
         cfg.port = int(port)
     if host := os.environ.get("PLASMON_HOST"):
         cfg.host = host
+    if worker := os.environ.get("PLASMON_RUN_WORKER"):
+        cfg.run_worker = worker.lower() not in ("0", "false", "no")
+    if url := os.environ.get("PLASMON_PUBLIC_URL"):
+        cfg.public_url = url
+    if secret := os.environ.get("PLASMON_SESSION_SECRET"):
+        cfg.auth.session_secret = secret
+    if (key := os.environ.get("PLASMON_S3_ACCESS_KEY")) and (sec := os.environ.get("PLASMON_S3_SECRET_KEY")):
+        cfg.blobs.access_key, cfg.blobs.secret_key = key, sec
+    if secret := os.environ.get("PLASMON_OIDC_CLIENT_SECRET"):
+        cfg.oidc.client_secret = secret
     return cfg
 
 

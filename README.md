@@ -1000,11 +1000,13 @@ plasmon/
       animation), content-addressed dedupe on submit, the first dashboard pages
       (overview, jobs, job, my machine, fleet, server, ledger). Not yet: the warm
       connection daemon, `net` commands.
-- [ ] **M3 Fleet and self-hosting.** `plasmon server init` Compose bundle with Caddy TLS, OIDC
-      with group→role mapping, org policies (availability windows, caps, idle detection),
-      `plasmon trainer enable` services for Linux, macOS and Windows, log shipping and live log
-      streams, control messages (pause, drain), `plasmon fleet` / `server` / `users` / `audit`
-      with `--watch`. First private deployment on a real office fleet.
+- [x] **M3 Fleet and self-hosting.** `plasmon server init --bundle compose` (API, worker,
+      PostgreSQL, MinIO, Caddy TLS), S3 blob store, OIDC with group→role mapping, org
+      policy (availability windows, battery rule) editable in Settings, `plasmon trainer
+      enable` services for Linux, macOS and Windows, log shipping and `fleet logs -f`,
+      pause/resume/drain, users, invites, audit log, Prometheus metrics, retention,
+      `fleet show --watch`, `server status --watch`. Idle detection and CPU caps are not
+      enforced yet. Not yet run on a real office fleet.
 - [ ] **M4 Verification.** Gauntlet scoring, OpenSkill ratings, top-G selection, seeded
       cheating tests (random Δ, copied Δ, wrong shard) all detected.
 - [ ] **M5 Alpha run.** VPS + R2, 150 M reference model, 10–50 invited trainers. Web

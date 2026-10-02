@@ -2,5 +2,15 @@
 {% block content %}
 <h1>{{ m.name }} <span class="muted small">{{ m.node_id[:12] }}…</span></h1>
 <p class="muted">{{ m.hardware.os }} · {{ m.hardware.cpu_count }} CPUs · {{ m.hardware.ram_gb }} GB RAM · GPU {{ m.hardware.gpu.name if m.hardware.gpu and m.hardware.gpu.kind != 'none' else 'none' }}{% if m.hardware.gpu and m.hardware.gpu.vram_gb %} ({{ m.hardware.gpu.vram_gb }} GB){% endif %} · owner {{ m.user.email }} · plasmon {{ m.versions.plasmon }}</p>
+{% if can_control %}
+<div class="actions">
+  {% if m.paused_by_admin or m.draining %}
+  <form method="post" action="/machine/{{ m.node_id }}/resume"><button type="submit">Resume</button></form>
+  {% else %}
+  <form method="post" action="/machine/{{ m.node_id }}/pause"><button type="submit" class="secondary">Pause now</button></form>
+  <form method="post" action="/machine/{{ m.node_id }}/drain"><button type="submit" class="secondary">Drain (finish this round, then stop)</button></form>
+  {% endif %}
+</div>
+{% endif %}
 <div id="machine" hx-get="/partials/machine/{{ m.node_id }}" hx-trigger="every 4s" hx-swap="innerHTML">{% include "partials/machine_live.html" %}</div>
 {% endblock %}

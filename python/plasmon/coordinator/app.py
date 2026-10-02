@@ -16,8 +16,8 @@ from fastapi.templating import Jinja2Templates
 
 from .. import __version__
 from ..core import identity
-from . import api_auth, api_jobs, api_machines, api_misc, db, web
-from .blobs import LocalBlobStore
+from . import api_auth, api_fleet, api_jobs, api_machines, api_misc, db, oidc, web
+from .blobs import make_store
 from .config import ServerConfig
 from .engine import Engine, Scheduler
 from .events import Bus
@@ -40,9 +40,10 @@ class State:
             self.server.save(key_path)
         self.engine_db = db.make_engine(cfg.resolved_db_url())
         self.session_factory = db.make_session_factory(self.engine_db)
-        self.blobs = LocalBlobStore(cfg.resolved_blob_path())
+        self.blobs = make_store(cfg)
         self.bus = Bus()
-        self.engine = Engine(self.blobs, self.bus, self.server, cfg.policy.heartbeat_interval_s)
+        self.engine = Engine(self.blobs, self.bus, self.server, cfg.policy.heartbeat_interval_s, cfg.retention)
+        self.oidc = oidc.Provider(cfg.oidc) if cfg.oidc.enabled else None
         self.sessions = CookieSessions(cfg.auth.session_secret)
         self.scheduler: Scheduler | None = None
         self.started_ts = time.time()
@@ -87,6 +88,8 @@ def create_app(cfg: ServerConfig) -> FastAPI:
     app.include_router(api_machines.router)
     app.include_router(api_jobs.router)
     app.include_router(api_misc.router)
+    app.include_router(api_fleet.router)
+    app.include_router(oidc.router)
     app.include_router(web.router)
     app.mount("/static", StaticFiles(directory=str(WEB / "static")), name="static")
 

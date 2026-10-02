@@ -475,3 +475,272 @@ pub fn hostname() -> String {
         .or_else(|| std::env::var("COMPUTERNAME").ok())
         .unwrap_or_else(|| "machine".into())
 }
+
+// ----- fleet control, users, audit, policy (M3) -----------------------------------------
+
+pub fn fleet_control(server: Option<&str>, node: &str, action: &str, reason: &str) -> Result<()> {
+    let api = api(server)?;
+    let body = if action == "resume" {
+        Value::Null
+    } else {
+        serde_json::json!({"reason": reason})
+    };
+    let out = api.post(&format!("/v1/fleet/{node}/{action}"), &body)?;
+    println!(
+        "{}: {action} requested (paused_by_admin={}, draining={})",
+        s(&out["name"]),
+        out["paused_by_admin"],
+        out["draining"]
+    );
+    Ok(())
+}
+
+pub fn fleet_show(server: Option<&str>, node: &str, json: bool) -> Result<()> {
+    let api = api(server)?;
+    let m = api.get(&format!("/v1/fleet/{node}"))?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&m)?);
+        return Ok(());
+    }
+    let met = &m["metrics"];
+    println!(
+        "{}  {}  {}",
+        s(&m["name"]),
+        s(&m["status"]),
+        s(&m["status_detail"])
+    );
+    println!(
+        "owner {}  node {}…  seen {} ago",
+        s(&m["owner"]),
+        &s(&m["node_id"])[..16.min(s(&m["node_id"]).len())],
+        ago(&m["last_seen_at"])
+    );
+    println!(
+        "cpu {} %  ram {} %  gpu {} %  job {} round {}",
+        num(&met["cpu_pct"]),
+        num(&met["ram_pct"]),
+        num(&met["gpu_pct"]),
+        s(&m["current_job_id"]),
+        s(&m["current_round"])
+    );
+    println!(
+        "rounds served {}  samples verified {}  honesty {}",
+        m["rounds_served"], m["samples_verified"], m["honesty"]
+    );
+    println!(
+        "paused by admin {}  draining {}  tags {}",
+        m["paused_by_admin"], m["draining"], m["tags"]
+    );
+    Ok(())
+}
+
+pub fn fleet_logs(
+    server: Option<&str>,
+    node: &str,
+    follow: bool,
+    grep: Option<&str>,
+) -> Result<()> {
+    let api = api(server)?;
+    let mut since: i64 = 0;
+    loop {
+        let mut path = format!("/v1/fleet/{node}/logs?limit=200");
+        if since > 0 {
+            path += &format!("&since_id={since}");
+        }
+        if let Some(g) = grep {
+            path += &format!("&grep={g}");
+        }
+        let lines = api.get(&path)?;
+        for line in lines.as_array().into_iter().flatten() {
+            since = since.max(line["id"].as_i64().unwrap_or(0));
+            let at = s(&line["at"]);
+            println!(
+                "{} {:<7} {}",
+                at.get(11..19).unwrap_or(&at),
+                s(&line["level"]).to_uppercase(),
+                s(&line["message"])
+            );
+        }
+        if !follow {
+            return Ok(());
+        }
+        std::thread::sleep(Duration::from_secs(2));
+    }
+}
+
+pub fn users_list(server: Option<&str>, json: bool) -> Result<()> {
+    let api = api(server)?;
+    let users = api.get("/v1/users")?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&users)?);
+        return Ok(());
+    }
+    let rows: Vec<Vec<String>> = users
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|u| {
+            vec![
+                s(&u["email"]),
+                s(&u["name"]),
+                s(&u["role"]),
+                u["machines"].to_string(),
+                if u["disabled"] == true {
+                    "disabled".into()
+                } else {
+                    String::new()
+                },
+            ]
+        })
+        .collect();
+    print!(
+        "{}",
+        table(&["email", "name", "role", "machines", ""], &rows)
+    );
+    Ok(())
+}
+
+pub fn users_invite(
+    server: Option<&str>,
+    email: Option<&str>,
+    role: &str,
+    days: u32,
+    json: bool,
+) -> Result<()> {
+    let api = api(server)?;
+    let out = api.post(
+        "/v1/users/invite",
+        &serde_json::json!({"email": email, "role": role, "expires_days": days}),
+    )?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&out)?);
+    } else {
+        println!(
+            "invite link ({}, expires {}):\n  {}",
+            s(&out["role"]),
+            &s(&out["expires_at"])[..10.min(s(&out["expires_at"]).len())],
+            s(&out["url"])
+        );
+    }
+    Ok(())
+}
+
+fn user_id_by_email(api: &Api, email: &str) -> Result<String> {
+    let users = api.get("/v1/users")?;
+    users
+        .as_array()
+        .into_iter()
+        .flatten()
+        .find(|u| u["email"] == email.to_lowercase())
+        .map(|u| s(&u["id"]))
+        .ok_or_else(|| anyhow::anyhow!("no user {email}"))
+}
+
+pub fn users_set_role(server: Option<&str>, email: &str, role: &str) -> Result<()> {
+    let api = api(server)?;
+    let id = user_id_by_email(&api, email)?;
+    let out = api.post(
+        &format!("/v1/users/{id}/role"),
+        &serde_json::json!({"role": role}),
+    )?;
+    println!("{} is now {}", s(&out["email"]), s(&out["role"]));
+    Ok(())
+}
+
+pub fn users_disable(server: Option<&str>, email: &str, disabled: bool) -> Result<()> {
+    let api = api(server)?;
+    let id = user_id_by_email(&api, email)?;
+    let out = api.post(
+        &format!("/v1/users/{id}/disable"),
+        &serde_json::json!({"disabled": disabled}),
+    )?;
+    println!(
+        "{} {}",
+        s(&out["email"]),
+        if out["disabled"] == true {
+            "disabled"
+        } else {
+            "enabled"
+        }
+    );
+    Ok(())
+}
+
+pub fn audit(server: Option<&str>, since_hours: u32, json: bool) -> Result<()> {
+    let api = api(server)?;
+    let rows = api.get(&format!("/v1/audit?since_hours={since_hours}&limit=200"))?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rows)?);
+        return Ok(());
+    }
+    let table_rows: Vec<Vec<String>> = rows
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| {
+            vec![
+                s(&r["at"]).chars().take(19).collect(),
+                s(&r["actor"]),
+                s(&r["action"]),
+                s(&r["target"]),
+                if r["detail"]
+                    .as_object()
+                    .map(|o| o.is_empty())
+                    .unwrap_or(true)
+                {
+                    String::new()
+                } else {
+                    r["detail"].to_string()
+                },
+            ]
+        })
+        .collect();
+    if table_rows.is_empty() {
+        println!("no audit events");
+    } else {
+        print!(
+            "{}",
+            table(
+                &["when (UTC)", "who", "action", "target", "detail"],
+                &table_rows
+            )
+        );
+    }
+    Ok(())
+}
+
+pub fn policy_show(server: Option<&str>, json: bool) -> Result<()> {
+    let api = api(server)?;
+    let pol = api.get("/v1/policy")?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&pol)?);
+        return Ok(());
+    }
+    let windows: Vec<String> = pol["windows"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|w| {
+            format!(
+                "{} {}-{}",
+                w["days"]
+                    .as_array()
+                    .map(|d| d.iter().map(s).collect::<Vec<_>>().join(","))
+                    .unwrap_or_default(),
+                s(&w["start"]),
+                s(&w["end"])
+            )
+        })
+        .collect();
+    println!(
+        "windows: {}\npause on battery: {}\ndrain at window end: {}",
+        if windows.is_empty() {
+            "always".to_string()
+        } else {
+            windows.join("; ")
+        },
+        pol["pause_on_battery"],
+        pol["drain_at_window_end"]
+    );
+    Ok(())
+}

@@ -147,6 +147,21 @@ def cmd_server_init(args: argparse.Namespace) -> int:
     cfg = config.ServerConfig(mode=args.mode, port=args.port, org_name=args.org, public_url=args.public_url)
     if args.mode != "home":
         cfg.auth.open_registration = False
+    if args.sso_issuer:
+        cfg.oidc.issuer = args.sso_issuer
+        cfg.oidc.client_id = args.sso_client_id
+        cfg.oidc.client_secret = args.sso_client_secret
+        cfg.oidc.admin_group = args.admin_group
+    if args.bundle == "compose":
+        from .coordinator import bundle
+
+        if not args.domain:
+            print("--domain is required for the compose bundle", file=sys.stderr)
+            return 2
+        out_dir = Path(args.output or "plasmon-deploy")
+        files = bundle.write_bundle(out_dir, cfg, args.domain, args.storage or "minio", args.db, tls_internal=args.tls_internal)
+        _print(args, {"files": [str(f) for f in files]}, "wrote:\n" + "\n".join(f"  {f}" for f in files) + f"\nnext:\n  cd {out_dir}\n  docker compose up -d\n  plasmon server bootstrap --owner you@company.com --config plasmon-server.yaml   (inside the api container, or with the same database URL)")
+        return 0
     path = config.write(cfg, Path(args.config) if args.config else None)
     _print(args, {"config": str(path), "data_dir": str(cfg.resolved_data_dir())}, f"wrote {path}\ndata dir: {cfg.resolved_data_dir()}\nnext: plasmon server start")
     return 0
@@ -268,7 +283,10 @@ def cmd_trainer_start(args: argparse.Namespace) -> int:
         print("not logged in. Run: plasmon login --server http://<host>:7117", file=sys.stderr)
         return 1
     ident = agent.machine_key_or_create(machine_key_path())
-    a = agent.Agent(server, creds.token if creds and creds.server == server else None, ident, args.name or agent.default_name(), device=args.device, max_hours=args.max_hours)
+    from .coordinator import policy as policy_mod
+
+    windows = [policy_mod.parse_hours(h) for h in (args.hours or [])]
+    a = agent.Agent(server, creds.token if creds and creds.server == server else None, ident, args.name or agent.default_name(), device=args.device, max_hours=args.max_hours, local_windows=windows, never_on_battery=args.never_on_battery)
     try:
         a.run()
     except KeyboardInterrupt:
@@ -326,6 +344,110 @@ def cmd_bench(args: argparse.Namespace) -> int:
     return 0
 
 
+# ----- fleet control, users, audit, policy -------------------------------------------------
+
+def cmd_fleet_control(args: argparse.Namespace) -> int:
+    client = _client(args)
+    action = args.fleet_action
+    if action == "logs":
+        since = 0
+        grep = args.grep
+        while True:
+            lines = client.get(f"/v1/fleet/{args.node}/logs", since_id=since or None, limit=200, grep=grep)
+            for line in lines:
+                since = max(since, line["id"])
+                print(f"{str(line['at'])[11:19]} {line['level'].upper():<7} {line['message']}")
+            if not args.follow:
+                return 0
+            time.sleep(2)
+    if action == "show":
+        m = client.machine(args.node)
+        met = m.get("metrics") or {}
+        text = (
+            f"{m['name']}  {m['status']}  {m.get('status_detail') or ''}\n"
+            f"owner {m.get('owner')}  node {m['node_id'][:16]}…  seen {m.get('last_seen_at')}\n"
+            f"cpu {met.get('cpu_pct', '-')} %  ram {met.get('ram_pct', '-')} %  gpu {met.get('gpu_pct', '-')} %  "
+            f"job {m.get('current_job_id') or '-'} round {m.get('current_round') if m.get('current_round') is not None else '-'}\n"
+            f"rounds served {m['rounds_served']}  samples verified {m['samples_verified']:,}  honesty {m['honesty']:.2f}\n"
+            f"paused by admin {m['paused_by_admin']}  draining {m['draining']}  tags {', '.join(m.get('tags') or []) or '-'}"
+        )
+        _print(args, m, text)
+        return 0
+    body = {"reason": getattr(args, "reason", "") or ""}
+    out = client.post(f"/v1/fleet/{args.node}/{action}", body if action != "resume" else None)
+    _print(args, out, f"{out['name']}: {action} requested (paused_by_admin={out['paused_by_admin']}, draining={out['draining']})")
+    return 0
+
+
+def cmd_users(args: argparse.Namespace) -> int:
+    client = _client(args)
+    action = args.users_action
+    if action == "list":
+        users = client.get("/v1/users")
+        rows = [[u["email"], u["name"], u["role"], u["machines"], "disabled" if u["disabled"] else ""] for u in users]
+        _print(args, users, _fmt_table(rows, ["email", "name", "role", "machines", ""]))
+        return 0
+    if action == "invite":
+        out = client.post("/v1/users/invite", {"email": args.email, "role": args.role, "expires_days": args.days})
+        _print(args, out, f"invite link ({out['role']}, expires {str(out['expires_at'])[:10]}):\n  {out['url']}")
+        return 0
+    users = client.get("/v1/users")
+    target = next((u for u in users if u["email"] == args.email.lower()), None)
+    if target is None:
+        print(f"no user {args.email}", file=sys.stderr)
+        return 1
+    if action == "set-role":
+        out = client.post(f"/v1/users/{target['id']}/role", {"role": args.role})
+        _print(args, out, f"{out['email']} is now {out['role']}")
+    elif action in ("disable", "enable"):
+        out = client.post(f"/v1/users/{target['id']}/disable", {"disabled": action == "disable"})
+        _print(args, out, f"{out['email']} {'disabled' if out['disabled'] else 'enabled'}")
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    rows = _client(args).get("/v1/audit", since_hours=args.since_hours, limit=args.limit)
+    table = [[str(r["at"])[:19], r["actor"] or "", r["action"], r["target"], json.dumps(r["detail"]) if r["detail"] else ""] for r in rows]
+    _print(args, rows, _fmt_table(table, ["when (UTC)", "who", "action", "target", "detail"]) if rows else "no audit events")
+    return 0
+
+
+def cmd_policy(args: argparse.Namespace) -> int:
+    client = _client(args)
+    if args.policy_action == "show":
+        pol = client.get("/v1/policy")
+        windows = "; ".join(f"{','.join(w['days'])} {w['start']}-{w['end']}" for w in pol["windows"]) or "always"
+        _print(args, pol, f"windows: {windows}\npause on battery: {pol['pause_on_battery']}\ndrain at window end: {pol['drain_at_window_end']}")
+        return 0
+    from .coordinator import policy as policy_mod
+
+    current = client.get("/v1/policy")
+    if args.windows is not None:
+        current["windows"] = [policy_mod.parse_hours(w).model_dump(mode="json") for w in args.windows if w]
+    if args.battery is not None:
+        current["pause_on_battery"] = args.battery == "pause"
+    out = client.request("PUT", "/v1/policy", json=current)
+    _print(args, out, "policy saved; trainers apply it at their next heartbeat")
+    return 0
+
+
+def cmd_trainer_service(args: argparse.Namespace) -> int:
+    from .trainer import services
+
+    if args.trainer_command == "enable":
+        extra = []
+        if args.name:
+            extra += ["--name", args.name]
+        if args.device != "any":
+            extra += ["--device", args.device]
+        for h in args.hours or []:
+            extra += ["--hours", h]
+        print(services.enable(extra, dry_run=args.dry_run))
+    else:
+        print(services.disable(dry_run=args.dry_run))
+    return 0
+
+
 # ----- parser ----------------------------------------------------------------------------
 
 def build_parser() -> argparse.ArgumentParser:
@@ -359,6 +481,16 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--org", default="home")
     p.add_argument("--public-url")
     p.add_argument("--config")
+    p.add_argument("--bundle", choices=["compose"], help="also write a deployment bundle")
+    p.add_argument("--domain", help="public host name for the bundle, e.g. plasmon.acme.com")
+    p.add_argument("--storage", help="minio (bundled) or s3://bucket[@https://endpoint]")
+    p.add_argument("--db", help="postgresql+psycopg://... (default: bundled PostgreSQL)")
+    p.add_argument("--output", help="bundle directory (default: ./plasmon-deploy)")
+    p.add_argument("--tls-internal", action="store_true", help="self-signed certificate instead of Let's Encrypt")
+    p.add_argument("--sso-issuer", help="OIDC issuer URL")
+    p.add_argument("--sso-client-id")
+    p.add_argument("--sso-client-secret")
+    p.add_argument("--admin-group", help="OIDC group whose members become admins")
     p.set_defaults(handler=cmd_server_init)
     p = server.add_parser("start", help="start the coordinator", parents=[common])
     p.add_argument("--config")
@@ -398,11 +530,62 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--name", help="machine name shown in the fleet (default: hostname)")
     p.add_argument("--device", choices=["any", "cuda", "mps", "cpu"], default="any")
     p.add_argument("--max-hours", type=float)
+    p.add_argument("--hours", action="append", help="only train inside this window, e.g. 'weekdays 19:00-08:00' (repeatable)")
+    p.add_argument("--never-on-battery", action="store_true")
     p.set_defaults(handler=cmd_trainer_start)
+    for name, help_ in (("enable", "run the trainer at login as a user service"), ("disable", "remove the user service")):
+        p = trainer.add_parser(name, help=help_, parents=[common])
+        p.add_argument("--name")
+        p.add_argument("--device", choices=["any", "cuda", "mps", "cpu"], default="any")
+        p.add_argument("--hours", action="append")
+        p.add_argument("--dry-run", action="store_true", help="print what would be written")
+        p.set_defaults(handler=cmd_trainer_service)
 
     p = sub.add_parser("fleet", help="machines you can see", parents=[common])
     p.add_argument("--status")
     p.set_defaults(handler=cmd_fleet)
+    fleet_sub = p.add_subparsers(dest="fleet_action")
+    for action in ("pause", "resume", "drain"):
+        q = fleet_sub.add_parser(action, parents=[common])
+        q.add_argument("node", help="node id (see `plasmon fleet --json`)")
+        q.add_argument("--reason", default="")
+        q.set_defaults(handler=cmd_fleet_control)
+    q = fleet_sub.add_parser("show", parents=[common])
+    q.add_argument("node")
+    q.set_defaults(handler=cmd_fleet_control)
+    q = fleet_sub.add_parser("logs", parents=[common])
+    q.add_argument("node")
+    q.add_argument("--follow", "-f", action="store_true")
+    q.add_argument("--grep")
+    q.set_defaults(handler=cmd_fleet_control)
+
+    users = sub.add_parser("users", help="people and roles (admin)").add_subparsers(dest="users_action")
+    users.add_parser("list", parents=[common]).set_defaults(handler=cmd_users)
+    q = users.add_parser("invite", parents=[common])
+    q.add_argument("--email")
+    q.add_argument("--role", default="member", choices=["member", "operator", "admin", "viewer"])
+    q.add_argument("--days", type=int, default=7)
+    q.set_defaults(handler=cmd_users)
+    q = users.add_parser("set-role", parents=[common])
+    q.add_argument("email")
+    q.add_argument("role", choices=["owner", "admin", "operator", "member", "viewer"])
+    q.set_defaults(handler=cmd_users)
+    for name in ("disable", "enable"):
+        q = users.add_parser(name, parents=[common])
+        q.add_argument("email")
+        q.set_defaults(handler=cmd_users)
+
+    p = sub.add_parser("audit", help="who did what (operator)", parents=[common])
+    p.add_argument("--since-hours", type=int, default=24)
+    p.add_argument("--limit", type=int, default=200)
+    p.set_defaults(handler=cmd_audit)
+
+    pol = sub.add_parser("policy", help="org trainer policy").add_subparsers(dest="policy_action")
+    pol.add_parser("show", parents=[common]).set_defaults(handler=cmd_policy)
+    q = pol.add_parser("set", parents=[common])
+    q.add_argument("--windows", nargs="*", help="e.g. 'weekdays 19:00-08:00' 'weekends 00:00-23:59'; pass nothing to clear")
+    q.add_argument("--battery", choices=["pause", "allow"])
+    q.set_defaults(handler=cmd_policy)
 
     ledger = sub.add_parser("ledger").add_subparsers(dest="ledger_command")
     ledger.add_parser("verify", parents=[common]).set_defaults(handler=cmd_ledger_verify)

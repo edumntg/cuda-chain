@@ -1,0 +1,21 @@
+{% extends "base.html" %}{% set active = 'server' %}{% block title %}Server{% endblock %}
+{% block content %}
+<h1>Server</h1>
+<div class="focal">
+  <div class="statusline">scheduler {% if status.scheduler.running %}<span class="status status-training"><span class="dot"></span>running</span>{% else %}<span class="status status-error"><span class="dot"></span>stopped</span>{% endif %} · ledger head <code>{{ status.ledger.head[:16] }}…</code> ({{ status.ledger.entries }} entries)</div>
+</div>
+<dl class="kv">
+  <div><dt>version</dt><dd>{{ status.version }} · {{ status.mode }} mode</dd></div>
+  <div><dt>uptime</dt><dd>{{ status.uptime_s }} s (since {{ status.started_at[:19] }})</dd></div>
+  <div><dt>database</dt><dd><code>{{ status.db.url }}</code> · ping {{ status.db.ping_ms }} ms</dd></div>
+  <div><dt>blob store</dt><dd>{{ status.blobs.bytes|bytes }} at <code>{{ status.blobs.path }}</code></dd></div>
+  <div><dt>live clients (SSE)</dt><dd>{{ status.sse_clients }}</dd></div>
+  <div><dt>users / machines / jobs</dt><dd>{{ status.counts.users }} / {{ status.counts.machines }} / {{ status.counts.jobs }} ({{ status.counts.jobs_running }} running)</dd></div>
+</dl>
+<h2>Recent round timings</h2>
+{% if status.round_timings %}
+<table><thead><tr><th>job</th><th class="num">round</th><th class="num">aggregate s</th><th class="num">eval s</th></tr></thead>
+<tbody>{% for t in status.round_timings %}<tr><td><a href="/jobs/{{ t.job }}">{{ t.job }}</a></td><td class="num">{{ t.round }}</td><td class="num">{{ t.aggregate_s }}</td><td class="num">{{ t.eval_s }}</td></tr>{% endfor %}</tbody></table>
+{% else %}<p class="empty">No round has closed yet.</p>{% endif %}
+<p class="muted small">Same view in a terminal: <code>plasmon server status</code></p>
+{% endblock %}

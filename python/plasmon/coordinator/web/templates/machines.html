@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% set active = 'machine' %}{% block title %}My machines{% endblock %}
+{% block content %}
+{% import "_macros.html" as m %}
+<h1>My machines</h1>
+{% if machines %}
+<ul class="plain">{% for mm in machines %}<li><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> {{ m.status(mm.status) }} <span class="muted small">seen {{ mm.last_seen_at|ago }} ago</span></li>{% endfor %}</ul>
+{% else %}
+<p class="empty">No machine is linked to your account. On the PC you want to lend, run <code>plasmon login --server {{ request.base_url }}</code> and then <code>plasmon trainer start</code>.</p>
+{% endif %}
+{% endblock %}

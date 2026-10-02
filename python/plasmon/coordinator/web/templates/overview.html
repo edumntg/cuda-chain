@@ -1,0 +1,22 @@
+{% extends "base.html" %}{% set active = 'overview' %}{% block title %}Overview{% endblock %}
+{% block content %}
+<h1>Overview</h1>
+<div id="overview" hx-get="/partials/overview" hx-trigger="every 5s" hx-swap="innerHTML">
+  {% include "partials/overview_stats.html" %}
+</div>
+<div class="two">
+  <section>
+    <h2>Your machines</h2>
+    {% if mine %}
+    <ul class="plain">{% for mm in mine %}{% import "_macros.html" as m %}<li><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> {{ m.status(mm.status) }}</li>{% endfor %}</ul>
+    {% else %}<p class="empty">No machine yet. On a PC you want to lend, run <code>plasmon login</code> and <code>plasmon trainer start</code>.</p>{% endif %}
+  </section>
+  <section>
+    <h2>Recently finished</h2>
+    {% if recent %}
+    <ul class="plain">{% for j in recent %}<li><a href="/jobs/{{ j.id }}">{{ j.name }}</a> <span class="muted">{{ j.status }} · {{ j.finished_at|ago }} ago</span></li>{% endfor %}</ul>
+    {% else %}<p class="empty">Nothing finished yet.</p>{% endif %}
+  </section>
+</div>
+<p class="muted small">Ledger head: {% if last %}<code>{{ last.hash[:16] }}…</code> (entry {{ last.seq }}){% else %}empty{% endif %} · <a href="/ledger">verify</a></p>
+{% endblock %}

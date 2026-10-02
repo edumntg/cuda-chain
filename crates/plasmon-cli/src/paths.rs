@@ -30,6 +30,26 @@ pub struct Credentials {
 }
 
 impl Credentials {
+    pub fn save(&self) -> Result<()> {
+        let path = credentials();
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        let text = format!(
+            "server = \"{}\"\nuser = \"{}\"\ntoken = \"{}\"\n",
+            self.server, self.user, self.token
+        );
+        let tmp = path.with_extension("toml.tmp");
+        std::fs::write(&tmp, text)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+        }
+        std::fs::rename(tmp, path)?;
+        Ok(())
+    }
+
     pub fn load() -> Result<Option<Self>> {
         let path = credentials();
         if !path.exists() {

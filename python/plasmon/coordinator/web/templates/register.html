@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Create account{% endblock %}
+{% block content %}
+<section class="auth">
+  <h1>Create account</h1>
+  {% if first %}<p class="note">This is the first account on this server. It becomes the owner.</p>{% endif %}
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  {% if not closed %}
+  <form method="post" action="/register" class="stack">
+    <label>Name <input name="name" type="text" autocomplete="name" maxlength="120"></label>
+    <label>Email <input name="email" type="email" required autocomplete="username"></label>
+    <label>Password <input name="password" type="password" required minlength="8" autocomplete="new-password"> <span class="muted small">8 characters or more</span></label>
+    <button type="submit">Create account</button>
+  </form>
+  {% endif %}
+  <p class="muted">Already registered? <a href="/login">Log in</a>.</p>
+</section>
+{% endblock %}

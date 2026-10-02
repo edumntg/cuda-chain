@@ -1,0 +1,31 @@
+{% import "_macros.html" as m %}
+<ul class="totals" aria-label="Fleet totals">
+  <li><strong>{{ summary.online }}</strong> online</li>
+  <li>{{ m.status('training') }} {{ summary.training }}</li>
+  <li>{{ m.status('idle') }} {{ summary.idle }}</li>
+  <li>{{ m.status('paused') }} {{ summary.paused }}</li>
+  <li>{{ m.status('unavailable') }} {{ summary.unavailable }}</li>
+  <li>{{ m.status('offline') }} {{ summary.offline }}</li>
+  <li>{{ m.status('error') }} {{ summary.error }}</li>
+</ul>
+{% if machines %}
+<table class="fleet">
+  <thead><tr><th>machine</th><th>owner</th><th>status</th><th>GPU</th><th class="num">GPU %</th><th class="num">CPU %</th><th class="num">RAM %</th><th>job / round</th><th class="num">honesty</th><th>seen</th></tr></thead>
+  <tbody>
+  {% for mm in machines %}{% set met = mm.metrics or {} %}{% set gpu = (mm.hardware or {}).get('gpu') or {} %}
+    <tr>
+      <td><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a></td>
+      <td>{{ mm.user.email if mm.user else '' }}</td>
+      <td>{{ m.status(mm.status) }}{% if mm.status_detail %}<br><span class="muted small">{{ mm.status_detail }}</span>{% endif %}</td>
+      <td>{{ gpu.name if gpu.kind and gpu.kind != 'none' else 'none' }}{% if gpu.vram_gb and gpu.kind != 'none' %} {{ gpu.vram_gb }}G{% endif %}</td>
+      <td class="num">{{ met.gpu_pct|default('') }}</td>
+      <td class="num">{{ met.cpu_pct|default('') }}</td>
+      <td class="num">{{ met.ram_pct|default('') }}</td>
+      <td>{% if mm.current_job_id %}<a href="/jobs/{{ mm.current_job_id }}">{{ mm.current_job_id }}</a> r{{ mm.current_round }}{% endif %}</td>
+      <td class="num">{{ '%.2f'|format(mm.honesty) }}</td>
+      <td>{{ mm.last_seen_at|ago }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">No machine has enrolled. On each PC: <code>plasmon login</code>, then <code>plasmon trainer start</code>.</p>{% endif %}

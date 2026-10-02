@@ -1,0 +1,19 @@
+{% macro status(value) -%}
+<span class="status status-{{ value }}"><span class="dot" aria-hidden="true"></span>{{ value }}</span>
+{%- endmacro %}
+
+{% macro spark(values, width=120, height=24) -%}
+{% if values and values|length > 1 %}
+{% set mx = values|max %}{% set mn = values|min %}{% set span = (mx - mn) if mx != mn else 1 %}
+<svg class="spark" width="{{ width }}" height="{{ height }}" viewBox="0 0 {{ width }} {{ height }}" role="img" aria-label="last hour">
+<polyline fill="none" stroke="currentColor" stroke-width="1.5" points="
+{%- for v in values %}{{ (loop.index0 * width / (values|length - 1))|round(1) }},{{ (height - 2 - ((v - mn) / span) * (height - 4))|round(1) }} {% endfor -%}
+"/></svg>
+{% else %}<span class="muted">no data yet</span>{% endif %}
+{%- endmacro %}
+
+{% macro bar(pct, label) -%}
+<div class="bar" role="meter" aria-valuenow="{{ pct|int }}" aria-valuemin="0" aria-valuemax="100" aria-label="{{ label }}">
+  <span style="width: {{ [pct|int, 100]|min }}%"></span>
+</div>
+{%- endmacro %}

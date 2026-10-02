@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% set active = 'fleet' %}{% block title %}Fleet{% endblock %}
+{% block content %}
+<h1>Fleet <span class="muted small">{{ org }}</span></h1>
+<div hx-get="/partials/fleet" hx-trigger="every 4s" hx-swap="innerHTML">{% include "partials/fleet_table.html" %}</div>
+<p class="muted small">Same view in a terminal: <code>plasmon fleet --watch</code></p>
+{% endblock %}

@@ -55,6 +55,7 @@ def inner_round(
     recipe: RecipeSpec,
     seed: int,
     device: torch.device | None = None,
+    on_step=None,
 ) -> RoundResult:
     """Run `recipe.inner_steps` optimizer steps from θ and return Δ = θ − θ_i."""
     device = device or pick_device()
@@ -77,6 +78,8 @@ def inner_round(
         if step == 0:
             loss_start = value
         loss_end = value
+        if on_step is not None:
+            on_step(step)
     new_state = model.state_dict()
     delta = {k: (theta[k].float() - new_state[k].detach().float().cpu()) for k in theta}
     return RoundResult(delta, loss_start, loss_end, recipe.inner_steps * recipe.batch_size, recipe.inner_steps)

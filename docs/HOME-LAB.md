@@ -228,12 +228,15 @@ Twenty rounds take two to four minutes on the two CPUs.
 
 ## Part F: download and test the model
 
-On the Mac:
+On the Mac, from the terminal:
 
 ```bash
 plasmon job download job_3f2a9c1e0b7d -o mnist.safetensors
 python3 examples/mnist/eval.py mnist.safetensors
 ```
+
+Or select **Download latest weights** on the job page and run `eval.py` on the saved
+file.
 
 Expected after twenty rounds: an accuracy between 96 % and 98 % on the 10,000 test
 images.

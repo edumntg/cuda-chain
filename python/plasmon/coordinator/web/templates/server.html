@@ -1,8 +1,13 @@
 {% extends "base.html" %}{% set active = 'server' %}{% block title %}Server{% endblock %}
 {% block content %}
 <h1>Server</h1>
-<div class="focal">
-  <div class="statusline">scheduler {% if status.scheduler.running %}<span class="status status-training"><span class="dot"></span>running</span>{% else %}<span class="status status-error"><span class="dot"></span>stopped</span>{% endif %} · ledger head <code>{{ status.ledger.head[:16] }}…</code> ({{ status.ledger.entries }} entries)</div>
+<div class="cards">
+  <div class="card stat accent rise" style="--i: 0"><div class="label">scheduler</div><div class="value">{% if status.scheduler.running %}<span class="chip chip-training"><span class="dot"></span>running</span>{% else %}<span class="chip chip-error"><span class="dot"></span>stopped</span>{% endif %}</div><div class="meta">tick every {{ status.scheduler.interval_s }} s</div></div>
+  <div class="card stat rise" style="--i: 1"><div class="label">ledger</div><div class="value">{{ status.ledger.entries }}<small> entries</small></div><div class="meta"><code>{{ status.ledger.head[:12] }}…</code></div></div>
+  <div class="card stat rise" style="--i: 2"><div class="label">database</div><div class="value">{{ status.db.ping_ms }}<small> ms</small></div><div class="meta">{{ status.db.url }}</div></div>
+  <div class="card stat rise" style="--i: 3"><div class="label">blobs</div><div class="value">{{ status.blobs.bytes|bytes }}</div><div class="meta">{{ status.blobs.path }}</div></div>
+  <div class="card stat rise" style="--i: 4"><div class="label">live clients</div><div class="value">{{ status.sse_clients }}</div><div class="meta">SSE connections</div></div>
+  <div class="card stat rise" style="--i: 5"><div class="label">uptime</div><div class="value">{{ (status.uptime_s // 3600) }}<small> h {{ (status.uptime_s % 3600) // 60 }} min</small></div><div class="meta">v{{ status.version }} · {{ status.mode }} mode</div></div>
 </div>
 <dl class="kv">
   <div><dt>version</dt><dd>{{ status.version }} · {{ status.mode }} mode</dd></div>

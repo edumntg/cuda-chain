@@ -111,3 +111,91 @@ textarea { width: 100%; }
 label.check { flex-direction: row; align-items: center; gap: 8px; }
 label.check input { width: auto; }
 tr.muted td { color: var(--ink-2); }
+
+/* ---------- Dashboard v2: cards, diagrams, motion (DESIGN.md, dial ENERGY 2 / RHYTHM 2 / MOTION 2) ---------- */
+:root { --shadow: 0 1px 2px rgba(0, 0, 0, 0.06); --flash: rgba(15, 118, 110, 0.18); }
+:root[data-theme="dark"], :root:not([data-theme="light"]) { }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --shadow: 0 1px 2px rgba(0, 0, 0, 0.5); --flash: rgba(94, 234, 212, 0.18); } }
+:root[data-theme="dark"] { --shadow: 0 1px 2px rgba(0, 0, 0, 0.5); --flash: rgba(94, 234, 212, 0.18); }
+.content { max-width: 1320px; }
+
+.card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius-panel); box-shadow: var(--shadow); padding: 14px 16px; }
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; margin: 10px 0 18px; }
+.stat .label { color: var(--ink-2); font-size: 0.82rem; }
+.stat .value { font-size: 1.9rem; font-weight: 600; line-height: 1.15; margin-top: 2px; transition: color 200ms; }
+.stat .value small { font-size: 0.95rem; color: var(--ink-2); font-weight: 500; }
+.stat .meta { color: var(--ink-2); font-size: 0.82rem; margin-top: 4px; min-height: 1.1em; }
+.stat.accent .value { color: var(--accent); }
+.chip { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 9px 2px 7px; font-size: 0.8rem; border: 1px solid var(--line); background: var(--paper-2); }
+.chip .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.chip-training { color: var(--st-training); } .chip-idle { color: var(--st-idle); } .chip-paused { color: var(--st-paused); }
+.chip-unavailable { color: var(--st-unavailable); } .chip-offline { color: var(--st-offline); } .chip-error { color: var(--st-error); }
+.chip-running { color: var(--st-training); } .chip-completed { color: var(--accent); } .chip-failed, .chip-cancelled { color: var(--st-offline); }
+.progress { height: 6px; background: var(--paper-2); border-radius: 3px; overflow: hidden; }
+.progress span { display: block; height: 100%; background: var(--accent); transition: width 300ms ease; }
+.jobcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; margin: 8px 0 16px; }
+.jobcard { display: flex; flex-direction: column; gap: 8px; text-decoration: none; color: inherit; }
+.jobcard:hover { border-color: var(--accent); }
+.jobcard .top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.jobcard .name { font-weight: 600; }
+.jobcard .nums { display: flex; gap: 16px; }
+.jobcard .nums div { display: flex; flex-direction: column; } .jobcard .nums dt { color: var(--ink-2); font-size: 0.78rem; } .jobcard .nums dd { margin: 0; font-size: 1.1rem; font-weight: 600; }
+.split { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+a.button.secondary { background: var(--paper-2); color: var(--ink); border: 1px solid var(--line); }
+.linkbtn { font-size: 0.85rem; }
+
+/* Diagrams */
+.diagram { position: relative; border: 1px solid var(--line); border-radius: var(--radius-panel); background: var(--paper); box-shadow: var(--shadow); padding: 10px; margin: 10px 0 16px; min-height: 120px; overflow: hidden; }
+.diagram-svg { width: 100%; height: auto; display: block; font-family: inherit; }
+.diagram .skeleton { position: absolute; border-radius: 8px; background: linear-gradient(90deg, var(--paper-2) 25%, var(--line) 50%, var(--paper-2) 75%); background-size: 200% 100%; animation: shimmer 1.4s linear infinite; }
+.diagram-error { color: var(--st-offline); margin: 8px 4px 0; font-size: 0.85rem; }
+.node-link { cursor: pointer; }
+.node-link:focus-visible .node-bg { stroke: var(--accent); stroke-width: 2; }
+.node .node-bg { fill: var(--paper); stroke: var(--line); stroke-width: 1; transition: stroke 200ms; }
+.node-link:hover .node-bg { stroke: var(--accent); }
+.node .node-head { fill: var(--paper-2); }
+.node .node-head-fill { fill: var(--paper-2); }
+.node text { fill: var(--ink); font-size: 12px; font-variant-numeric: tabular-nums; }
+.node .node-kind, .node .node-state { font-size: 10.5px; fill: var(--ink-2); letter-spacing: 0.01em; }
+.node .node-title { font-weight: 600; font-size: 12.5px; }
+.node .node-sub { fill: var(--ink-2); font-size: 11px; }
+.node .node-bar-bg { fill: var(--line); } .node .node-bar { fill: var(--accent); transition: width 300ms ease; }
+.node .port { fill: var(--ink-2); stroke: var(--paper); stroke-width: 1.5; }
+.node .port-pulse { fill: none; stroke: currentColor; stroke-width: 1.5; opacity: 0; }
+.node.status-training { color: var(--st-training); } .node.status-idle { color: var(--st-idle); } .node.status-paused { color: var(--st-paused); }
+.node.status-unavailable { color: var(--st-unavailable); } .node.status-offline { color: var(--st-offline); } .node.status-error { color: var(--st-error); }
+.node.node-coordinator { color: var(--accent); }
+.node.status-training .node-bg, .node.status-error .node-bg, .node.status-offline .node-bg, .node.node-coordinator .node-bg { stroke: currentColor; }
+.node.status-training .node-state, .node.status-error .node-state, .node.status-offline .node-state, .node.status-paused .node-state { fill: currentColor; font-weight: 600; }
+.node.status-training .port, .node.status-error .port, .node.status-paused .port, .node.node-coordinator .port { fill: currentColor; }
+.node.status-training .port-pulse { animation: pulse 1.6s ease-out infinite; }
+.node.status-offline .node-bg { stroke-dasharray: 3 3; }
+.node.status-offline text, .node.status-unavailable text { fill: var(--ink-2); }
+.flow { stroke-width: 1.5; stroke: var(--line); vector-effect: non-scaling-stroke; transition: stroke 200ms; }
+.flow-training { stroke: var(--st-training); stroke-dasharray: 5 5; animation: ants 0.9s linear infinite; }
+.flow-training-static { stroke: var(--st-training); }
+.flow-paused { stroke: var(--st-paused); stroke-dasharray: 5 5; }
+.flow-idle { stroke: var(--line); }
+.flow-unavailable { stroke: var(--line); stroke-dasharray: 2 4; }
+.flow-offline { stroke: var(--st-offline); stroke-dasharray: 2 4; opacity: 0.7; }
+.flow-error { stroke: var(--st-error); }
+.flow-control { stroke: var(--accent); opacity: 0.7; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; color: var(--ink-2); font-size: 0.8rem; margin: 0 0 6px; }
+.legend i { display: inline-block; width: 18px; height: 0; border-top: 2px solid currentColor; vertical-align: middle; margin-right: 5px; }
+.legend .l-training { color: var(--st-training); } .legend .l-paused { color: var(--st-paused); } .legend .l-offline { color: var(--st-offline); } .legend .l-control { color: var(--accent); }
+.legend .dashed i { border-top-style: dashed; }
+
+/* Motion. Each keyframe has one job: ants = data moving, pulse = heartbeat alive, rise = first paint order, shimmer = waiting, flash = a value changed. */
+@keyframes ants { to { stroke-dashoffset: -20; } }
+@keyframes pulse { 0% { opacity: 0.8; r: 4; } 100% { opacity: 0; r: 12; } }
+@keyframes rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@keyframes flash { from { background: var(--flash); } to { background: transparent; } }
+body.is-loaded .rise { animation: rise 320ms ease-out both; animation-delay: calc(var(--i, 0) * 45ms); }
+.flash { animation: flash 900ms ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .flow-training, .node .port-pulse, body.is-loaded .rise, .diagram .skeleton, .flash { animation: none !important; }
+  .node .port-pulse { opacity: 0; }
+}
+@media (max-width: 720px) { .split { grid-template-columns: 1fr; } .cards { grid-template-columns: repeat(2, 1fr); } }

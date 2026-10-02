@@ -142,3 +142,51 @@ def test_public_mode_keeps_registration_open(tmp_path):
     cfg_path2 = tmp_path / "priv.yaml"
     assert main(["server", "init", "--mode", "private", "--config", str(cfg_path2)]) == 0
     assert "open_registration: false" in cfg_path2.read_text()
+
+
+def test_job_download_and_diagram_assets(server, dataset_dir, tmp_path, monkeypatch):
+    """Weights download from the job page (latest and per round), static diagram module."""
+    monkeypatch.setenv("PLASMON_CACHE_DIR", str(tmp_path / "cache"))
+    owner = Client(server)
+    owner.register("dl@example.com", "dl-password")
+    owner.login("dl@example.com", "dl-password")
+    spec = jobspec.loads(
+        f"""
+name: dl-job
+model: {{arch: mlp}}
+dataset: {{source: "{dataset_dir.as_posix()}", shard_size: 1000}}
+recipe: {{inner_steps: 5}}
+requirements: {{min_trainers: 1, max_trainers: 1, round_timeout_s: 60}}
+budget: {{rounds: 2}}
+"""
+    )
+    job = jobs.submit(owner, spec, progress=lambda s: None)
+    agent = Agent(server, owner.token, Identity.generate(), name="dl-pc", device="cpu")
+    agent.machine_creds_path = tmp_path / "m.toml"
+    thread = threading.Thread(target=agent.run, daemon=True)
+    thread.start()
+    try:
+        final = owner.wait_job(job["id"], timeout_s=120)
+    finally:
+        agent.stop()
+        thread.join(timeout=20)
+    assert final["status"] == "completed"
+    with httpx.Client(base_url=server, follow_redirects=False, timeout=30) as web:
+        r = web.post("/login", data={"email": "dl@example.com", "password": "dl-password", "next": "/"})
+        web.cookies.update(r.cookies)
+        page = web.get(f"/jobs/{job['id']}")
+        assert page.status_code == 200 and "Download latest weights" in page.text and 'data-diagram="job"' in page.text
+        latest = web.get(f"/jobs/{job['id']}/download")
+        assert latest.status_code == 200 and latest.headers["content-disposition"].endswith('-latest.safetensors"')
+        assert latest.content == owner.get_blob(final["theta"])
+        rounds = final["rounds"]
+        after_round_0 = rounds[1]["theta"]  # the weights round 0 produced are where round 1 started
+        assert after_round_0 != final["theta"]
+        first_after = web.get(f"/jobs/{job['id']}/download?blob={after_round_0}")
+        assert first_after.status_code == 200 and first_after.headers["content-disposition"].endswith(f'-{after_round_0[:8]}.safetensors"')
+        assert web.get(f"/jobs/{job['id']}/download?blob={'0' * 64}").status_code == 404
+        overview = web.get("/")
+        assert 'data-diagram="network"' in overview.text and "machines online" in overview.text
+        assert web.get("/fleet").status_code in (200, 403)
+        assert web.get("/static/diagram.js").status_code == 200
+        assert web.get(f"/machine/{agent.identity.node_id}").status_code == 200

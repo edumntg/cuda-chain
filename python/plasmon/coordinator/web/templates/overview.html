@@ -1,29 +1,30 @@
 {% extends "base.html" %}{% set active = 'overview' %}{% block title %}Overview{% endblock %}
 {% block content %}
-<h1>Overview</h1>
+<div class="titlerow"><h1>Overview</h1><a class="button" href="/jobs/new">Submit a job</a></div>
+{% include "partials/_diagram_network.html" %}
 <div id="overview" hx-get="/partials/overview" hx-trigger="every 5s" hx-swap="innerHTML">
   {% include "partials/overview_stats.html" %}
 </div>
 <div class="two">
-  <section>
-    <h2>Your machines</h2>
+  <section class="card rise" style="--i: 6">
+    <h2 style="margin-top:0">Your machines</h2>
     {% if mine %}
-    <ul class="plain">{% for mm in mine %}{% import "_macros.html" as m %}<li><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> {{ m.status(mm.status) }}</li>{% endfor %}</ul>
+    <ul class="plain">{% for mm in mine %}{% import "_macros.html" as m %}<li><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> <span class="chip chip-{{ mm.status }}"><span class="dot"></span>{{ mm.status }}</span></li>{% endfor %}</ul>
     {% else %}<p class="empty">No machine yet. On a PC you want to lend, run <code>plasmon login</code> and <code>plasmon trainer start</code>.</p>{% endif %}
   </section>
-  <section>
-    <h2>Recently finished</h2>
+  <section class="card rise" style="--i: 7">
+    <h2 style="margin-top:0">Recently finished</h2>
     {% if recent %}
-    <ul class="plain">{% for j in recent %}<li><a href="/jobs/{{ j.id }}">{{ j.name }}</a> <span class="muted">{{ j.status }} · {{ j.finished_at|ago }} ago</span></li>{% endfor %}</ul>
+    <ul class="plain">{% for j in recent %}<li><a href="/jobs/{{ j.id }}">{{ j.name }}</a> <span class="chip chip-{{ j.status }}"><span class="dot"></span>{{ j.status }}</span> <span class="muted small">{{ j.finished_at|ago }} ago{% if j.last_eval_acc %} · {{ j.last_eval_acc|pct }}{% endif %}</span></li>{% endfor %}</ul>
     {% else %}<p class="empty">Nothing finished yet.</p>{% endif %}
   </section>
 </div>
-<section>
-  <h2>Leaderboard</h2>
+<section class="card rise" style="--i: 8">
+  <h2 style="margin-top:0">Leaderboard</h2>
   {% if top %}
   {% import "_macros.html" as m %}
   <table><thead><tr><th class="num">#</th><th>machine</th><th>owner</th><th class="num">samples verified</th><th class="num">rounds</th><th class="num">honesty</th></tr></thead>
-  <tbody>{% for mm in top %}<tr><td class="num">{{ loop.index }}</td><td><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> {{ m.status(mm.status) }}</td><td>{{ mm.user.email if mm.user else '' }}</td><td class="num">{{ mm.samples_verified|num }}</td><td class="num">{{ mm.rounds_served }}</td><td class="num">{{ '%.2f'|format(mm.honesty) }}</td></tr>{% endfor %}</tbody></table>
+  <tbody>{% for mm in top %}<tr><td class="num">{{ loop.index }}</td><td><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a> <span class="chip chip-{{ mm.status }}"><span class="dot"></span>{{ mm.status }}</span></td><td>{{ mm.user.email if mm.user else '' }}</td><td class="num">{{ mm.samples_verified|num }}</td><td class="num">{{ mm.rounds_served }}</td><td class="num">{{ '%.2f'|format(mm.honesty) }}</td></tr>{% endfor %}</tbody></table>
   <p class="muted small"><a href="/leaderboard">Full leaderboard</a></p>
   {% else %}<p class="empty">The leaderboard fills in after the first verified round.</p>{% endif %}
 </section>

@@ -1,13 +1,11 @@
 {% import "_macros.html" as m %}
-<ul class="totals" aria-label="Fleet totals">
-  <li><strong>{{ summary.online }}</strong> online</li>
-  <li>{{ m.status('training') }} {{ summary.training }}</li>
-  <li>{{ m.status('idle') }} {{ summary.idle }}</li>
-  <li>{{ m.status('paused') }} {{ summary.paused }}</li>
-  <li>{{ m.status('unavailable') }} {{ summary.unavailable }}</li>
-  <li>{{ m.status('offline') }} {{ summary.offline }}</li>
-  <li>{{ m.status('error') }} {{ summary.error }}</li>
-</ul>
+<div class="cards">
+  <div class="card stat accent"><div class="label">online</div><div class="value" data-live="online">{{ summary.online }}<small> / {{ summary.machines }}</small></div><div class="meta">machines with a heartbeat</div></div>
+  <div class="card stat"><div class="label">{{ m.status('training') }}</div><div class="value" data-live="training">{{ summary.training }}</div><div class="meta">in a round now</div></div>
+  <div class="card stat"><div class="label">{{ m.status('idle') }}</div><div class="value" data-live="idle">{{ summary.idle }}</div><div class="meta">waiting for a round</div></div>
+  <div class="card stat"><div class="label">{{ m.status('paused') }} / {{ m.status('unavailable') }}</div><div class="value" data-live="paused">{{ summary.paused + summary.unavailable }}</div><div class="meta">{{ summary.paused }} paused · {{ summary.unavailable }} outside policy</div></div>
+  <div class="card stat"><div class="label">{{ m.status('offline') }} / {{ m.status('error') }}</div><div class="value" data-live="down">{{ summary.offline + summary.error }}</div><div class="meta">{{ summary.offline }} offline · {{ summary.error }} error</div></div>
+</div>
 {% if machines %}
 <table class="fleet">
   <thead><tr><th>machine</th><th>owner</th><th>status</th><th>GPU</th><th class="num">GPU %</th><th class="num">CPU %</th><th class="num">RAM %</th><th>job / round</th><th class="num">honesty</th><th>seen</th></tr></thead>
@@ -16,12 +14,12 @@
     <tr>
       <td><a href="/machine/{{ mm.node_id }}">{{ mm.name }}</a></td>
       <td>{{ mm.user.email if mm.user else '' }}</td>
-      <td>{{ m.status(mm.status) }}{% if mm.status_detail %}<br><span class="muted small">{{ mm.status_detail }}</span>{% endif %}</td>
+      <td><span class="chip chip-{{ mm.status }}" data-live="st-{{ mm.node_id }}"><span class="dot"></span>{{ mm.status }}</span>{% if mm.status_detail %}<br><span class="muted small">{{ mm.status_detail }}</span>{% endif %}</td>
       <td>{{ gpu.name if gpu.kind and gpu.kind != 'none' else 'none' }}{% if gpu.vram_gb and gpu.kind != 'none' %} {{ gpu.vram_gb }}G{% endif %}</td>
-      <td class="num">{{ met.gpu_pct|default('') }}</td>
-      <td class="num">{{ met.cpu_pct|default('') }}</td>
-      <td class="num">{{ met.ram_pct|default('') }}</td>
-      <td>{% if mm.current_job_id %}<a href="/jobs/{{ mm.current_job_id }}">{{ mm.current_job_id }}</a> r{{ mm.current_round }}{% endif %}</td>
+      <td class="num" data-live="g-{{ mm.node_id }}">{{ met.gpu_pct|default('') }}</td>
+      <td class="num" data-live="c-{{ mm.node_id }}">{{ met.cpu_pct|default('') }}</td>
+      <td class="num" data-live="r-{{ mm.node_id }}">{{ met.ram_pct|default('') }}</td>
+      <td data-live="j-{{ mm.node_id }}">{% if mm.current_job_id %}<a href="/jobs/{{ mm.current_job_id }}">{{ mm.current_job_id }}</a> r{{ mm.current_round }}{% endif %}</td>
       <td class="num">{{ '%.2f'|format(mm.honesty) }}</td>
       <td>{{ mm.last_seen_at|ago }}</td>
     </tr>

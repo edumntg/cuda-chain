@@ -95,6 +95,7 @@ class Agent:
         self.session_samples = 0
         self.machine_creds_path: Path = machine_path()
         self._lock = threading.Lock()
+        self._hb_lock = threading.Lock()  # one heartbeat on the wire at a time
 
     # ----- enrolment ---------------------------------------------------------------
 
@@ -129,6 +130,10 @@ class Agent:
     # ----- heartbeat ---------------------------------------------------------------
 
     def heartbeat(self) -> dict[str, Any]:
+        with self._hb_lock:
+            return self._heartbeat()
+
+    def _heartbeat(self) -> dict[str, Any]:
         assert self.client is not None
         metrics = telemetry.metrics()
         metrics.update({"step": self.step, "steps_total": self.steps_total, "session_rounds": self.session_rounds, "session_samples": self.session_samples})
@@ -187,6 +192,10 @@ class Agent:
             self.state, self.job_id, self.round, self.step, self.steps_total = "training", job_id, rnd, 0, spec.recipe.inner_steps
             self.detail = f"shard {a['shard']['index']}"
         log.info("round %s of %s: shard %s (%s samples)", rnd, spec.name, a["shard"]["index"], a["shard"]["n"])
+        try:  # tell the server now; a short round can end before the next scheduled heartbeat
+            self.heartbeat()
+        except Exception as e:  # the round still runs; the next heartbeat retries
+            log.debug("heartbeat at round start failed: %s", e)
         t0 = time.perf_counter()
         theta = weights.from_bytes(self.fetch_blob(a["theta"]))
         shard = data.Shard.from_bytes(self.fetch_blob(a["shard"]["blob"]))

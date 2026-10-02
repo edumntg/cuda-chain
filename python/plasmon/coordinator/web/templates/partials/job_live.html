@@ -1,25 +1,21 @@
 {% import "_macros.html" as m %}
-<div class="jobhead">
-  <div><span class="jobstatus jobstatus-{{ job.status }}">{{ job.status }}</span> {% if job.status_detail %}<span class="muted">{{ job.status_detail }}</span>{% endif %}</div>
-  <dl class="kv inline">
-    <div><dt>round</dt><dd>{{ job.round_index }} / {{ job.total_rounds }}</dd></div>
-    <div><dt>eval loss</dt><dd>{{ job.last_eval_loss|f3 }}</dd></div>
-    <div><dt>eval acc</dt><dd>{{ job.last_eval_acc|pct }}</dd></div>
-    <div><dt>parameters</dt><dd>{{ job.param_count|num }}</dd></div>
-    <div><dt>shards</dt><dd>{{ job.shards|length }}</dd></div>
-    {% if job.credits_spent %}<div><dt>credits spent</dt><dd>{{ job.credits_spent|num }}</dd></div>{% endif %}
-  </dl>
+<div class="cards">
+  <div class="card stat"><div class="label">state</div><div class="value"><span class="chip chip-{{ job.status }}" data-live="status"><span class="dot"></span>{{ job.status }}</span></div><div class="meta">{{ job.status_detail or (job.spec.recipe.inner_steps ~ ' inner steps · top-k ' ~ job.spec.recipe.compression.topk) }}</div></div>
+  <div class="card stat accent"><div class="label">round</div><div class="value" data-live="round">{{ job.round_index }}<small> / {{ job.total_rounds }}</small></div><div class="progress" style="margin-top:6px" role="progressbar" aria-valuenow="{{ job.round_index }}" aria-valuemin="0" aria-valuemax="{{ job.total_rounds }}" aria-label="rounds"><span style="width: {{ (100 * job.round_index / job.total_rounds)|int }}%"></span></div></div>
+  <div class="card stat"><div class="label">eval loss</div><div class="value" data-live="loss">{{ job.last_eval_loss|f3 or '–' }}</div><div class="meta">on the held-out shard</div></div>
+  <div class="card stat"><div class="label">accuracy</div><div class="value" data-live="acc">{{ job.last_eval_acc|pct or '–' }}</div><div class="meta">{{ job.param_count|num }} parameters</div></div>
+  <div class="card stat"><div class="label">data</div><div class="value">{{ job.shards|length }}<small> shards</small></div><div class="meta">{{ job.spec.dataset.shard_size|num }} samples each{% if job.credits_spent %} · {{ job.credits_spent|num }} credits{% endif %}</div></div>
 </div>
-<div class="chart" id="loss-chart" data-series='{{ series|tojson }}' role="img" aria-label="Evaluation loss and accuracy per round">
+<div class="chart card" id="loss-chart" data-series='{{ series|tojson }}' role="img" aria-label="Evaluation loss and accuracy per round">
   {% if not series.rounds %}<p class="empty">The chart appears after the first round closes.</p>{% endif %}
 </div>
 <h2>Rounds</h2>
 {% if rounds %}
 <table>
-  <thead><tr><th class="num">round</th><th>status</th><th class="num">trainers</th><th class="num">eval loss</th><th class="num">eval acc</th><th class="num">mean train loss</th><th class="num">bytes in</th><th>closed</th></tr></thead>
+  <thead><tr><th class="num">round</th><th>status</th><th class="num">trainers</th><th class="num">eval loss</th><th class="num">eval acc</th><th class="num">mean train loss</th><th class="num">bytes in</th><th>closed</th><th>weights</th></tr></thead>
   <tbody>
   {% for r in rounds|reverse %}
-    <tr><td class="num">{{ r.index }}</td><td>{{ r.status }}</td><td class="num">{{ r.accepted }}</td><td class="num">{{ r.eval_loss|f3 }}</td><td class="num">{{ r.eval_acc|pct }}</td><td class="num">{{ r.mean_loss_end|f3 }}</td><td class="num">{{ r.bytes_in|bytes }}</td><td>{% if r.closed_at %}{{ r.closed_at|ago }} ago{% else %}deadline in {{ r.deadline_at|ago }}{% endif %}</td></tr>
+    <tr><td class="num">{{ r.index }}</td><td>{{ r.status }}</td><td class="num">{{ r.accepted }}</td><td class="num">{{ r.eval_loss|f3 }}</td><td class="num">{{ r.eval_acc|pct }}</td><td class="num">{{ r.mean_loss_end|f3 }}</td><td class="num">{{ r.bytes_in|bytes }}</td><td>{% if r.closed_at %}{{ r.closed_at|ago }} ago{% else %}deadline in {{ r.deadline_at|ago }}{% endif %}</td><td>{% if r.index in after %}<a class="linkbtn" href="/jobs/{{ job.id }}/download?blob={{ after[r.index] }}">download</a>{% endif %}</td></tr>
   {% endfor %}
   </tbody>
 </table>

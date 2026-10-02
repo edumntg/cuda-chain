@@ -91,7 +91,7 @@ def test_dashboard_pages_and_device_flow(server):
             if r.status_code == 200 and not path.startswith("/partials/"):
                 assert "plasmon" in r.text and "<main" in r.text, path
             elif r.status_code == 200:
-                assert "<table" in r.text or "focal" in r.text, path
+                assert "<table" in r.text or "focal" in r.text or "card" in r.text, path
         cli = Client(server)
         start = cli.device_start(label="test cli")
         assert start["verification_uri"].endswith("/device")

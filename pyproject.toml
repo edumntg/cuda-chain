@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "plasmon"
-version = "0.1.0"
+version = "0.1.2"
 description = "Train models on a fleet of volunteer GPUs. Engine: coordinator, trainer, validator."
 readme = "README.md"
 license = "Apache-2.0"

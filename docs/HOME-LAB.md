@@ -38,7 +38,7 @@ plasmon --version
 python3 -m plasmon --version
 ```
 
-Both print `plasmon 0.1.0`.
+Both print `plasmon 0.1.2`.
 
 To update the engine later, when the repository has changed:
 

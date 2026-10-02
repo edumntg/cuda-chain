@@ -1133,7 +1133,7 @@ dependencies = [
 
 [[package]]
 name = "plasmon-cli"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1152,7 +1152,7 @@ dependencies = [
 
 [[package]]
 name = "plasmon-core"
-version = "0.1.0"
+version = "0.1.2"
 dependencies = [
  "blake3",
  "ed25519-dalek",

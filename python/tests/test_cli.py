@@ -26,7 +26,7 @@ def run(args: list[str], env: dict[str, str], check: bool = True) -> subprocess.
 
 def test_cli_end_to_end(server, dataset_dir, tmp_path):
     env = {**os.environ, "PLASMON_CONFIG_DIR": str(tmp_path / "config"), "PLASMON_CACHE_DIR": str(tmp_path / "cache"), "PLASMON_DATA_DIR": str(tmp_path / "data")}
-    assert "plasmon 0.1.0" in run(["--version"], env).stdout
+    assert "plasmon 0.1.2" in run(["--version"], env).stdout
 
     # bootstrap works on a fresh, separate server database
     cfg = tmp_path / "other-server.yaml"

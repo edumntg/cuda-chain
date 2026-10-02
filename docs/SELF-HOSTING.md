@@ -135,10 +135,10 @@ plasmon login --server https://plasmon.acme.com
 plasmon trainer enable
 ```
 
-On Windows:
+On Windows, in PowerShell:
 
 ```powershell
-powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"
+irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex
 py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
 plasmon login --server https://plasmon.acme.com
 plasmon trainer enable

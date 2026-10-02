@@ -1,31 +1,28 @@
 {% import "_macros.html" as mac %}
 {% set met = m.metrics or {} %}
-<div class="focal">
-  <div class="statusline">{{ mac.status(m.status) }}
-    {% if m.status == 'training' and job %}training <a href="/jobs/{{ job.id }}">{{ job.name }}</a> for {{ job.owner.email if job.owner else '' }}, round {{ m.current_round }}{% if met.steps_total %} · step {{ met.step }} / {{ met.steps_total }}{% endif %}
-    {% elif m.status == 'idle' %}waiting for a round{% elif m.status_detail %}{{ m.status_detail }}{% endif %}
+<div class="card rise" style="--i: 0">
+  <div class="statusline"><span class="chip chip-{{ m.status }}" data-live="status"><span class="dot"></span>{{ m.status }}</span>
+    {% if m.status == 'training' and job %} training <a href="/jobs/{{ job.id }}">{{ job.name }}</a> for {{ job.owner.email if job.owner else '' }}, round {{ m.current_round }}{% if met.steps_total %} · step <span data-live="step">{{ met.step }}</span> / {{ met.steps_total }}{% endif %}
+    {% elif m.status == 'idle' %} waiting for a round{% elif m.status_detail %} {{ m.status_detail }}{% endif %}
   </div>
   <div class="muted small">last heartbeat {{ m.last_seen_at|ago }} ago{% if m.paused_by_admin %} · paused by admin{% endif %}{% if m.draining %} · draining{% endif %}</div>
+  {% if m.status == 'training' and met.steps_total %}<div class="progress" style="margin-top:8px" role="progressbar" aria-valuenow="{{ met.step }}" aria-valuemin="0" aria-valuemax="{{ met.steps_total }}" aria-label="round progress"><span style="width: {{ (100 * met.step / met.steps_total)|int }}%"></span></div>{% endif %}
 </div>
-{% if m.status == 'training' and met.steps_total %}{{ mac.bar(100 * met.step / met.steps_total, 'round progress') }}{% endif %}
-<div class="gauges">
-  <div><div class="label">CPU</div><div class="val">{{ met.cpu_pct|default('–') }} %</div>{{ mac.bar(met.cpu_pct|default(0), 'CPU') }}{{ mac.spark(spark.cpu_pct) }}</div>
-  <div><div class="label">RAM</div><div class="val">{{ met.ram_pct|default('–') }} %</div>{{ mac.bar(met.ram_pct|default(0), 'RAM') }}{{ mac.spark(spark.ram_pct) }}</div>
-  {% if met.gpu_pct is defined %}<div><div class="label">GPU</div><div class="val">{{ met.gpu_pct }} %</div>{{ mac.bar(met.gpu_pct, 'GPU') }}{{ mac.spark(spark.gpu_pct) }}</div>{% endif %}
-  {% if met.vram_used_gb is defined %}<div><div class="label">VRAM</div><div class="val">{{ met.vram_used_gb }} / {{ met.vram_total_gb }} GB</div>{{ mac.bar(100 * met.vram_used_gb / (met.vram_total_gb or 1), 'VRAM') }}</div>{% endif %}
-  {% if met.gpu_temp_c is defined %}<div><div class="label">GPU temp</div><div class="val">{{ met.gpu_temp_c }} °C</div></div>{% endif %}
-  {% if met.net_up_mbps is defined %}<div><div class="label">Network</div><div class="val">↑ {{ met.net_up_mbps }} ↓ {{ met.net_down_mbps }} Mbit/s</div></div>{% endif %}
-  {% if met.on_battery is defined %}<div><div class="label">Power</div><div class="val">{% if met.on_battery %}battery {{ met.battery_pct|int }} %{% else %}plugged in{% endif %}</div></div>{% endif %}
+<div class="cards">
+  <div class="card stat rise" style="--i: 1"><div class="label">CPU</div><div class="value" data-live="cpu">{{ met.cpu_pct|default('–') }}<small> %</small></div>{{ mac.spark(spark.cpu_pct, 150, 24) }}</div>
+  <div class="card stat rise" style="--i: 2"><div class="label">RAM</div><div class="value" data-live="ram">{{ met.ram_pct|default('–') }}<small> %</small></div>{{ mac.spark(spark.ram_pct, 150, 24) }}</div>
+  {% if met.gpu_pct is defined %}<div class="card stat rise" style="--i: 3"><div class="label">GPU</div><div class="value" data-live="gpu">{{ met.gpu_pct }}<small> %</small></div>{{ mac.spark(spark.gpu_pct, 150, 24) }}</div>{% endif %}
+  {% if met.vram_used_gb is defined %}<div class="card stat rise" style="--i: 4"><div class="label">VRAM</div><div class="value">{{ met.vram_used_gb }}<small> / {{ met.vram_total_gb }} GB</small></div>{{ mac.bar(100 * met.vram_used_gb / (met.vram_total_gb or 1), 'VRAM') }}</div>{% endif %}
+  {% if met.gpu_temp_c is defined %}<div class="card stat rise" style="--i: 5"><div class="label">GPU temp</div><div class="value">{{ met.gpu_temp_c }}<small> °C</small></div></div>{% endif %}
+  {% if met.net_up_mbps is defined %}<div class="card stat rise" style="--i: 6"><div class="label">network</div><div class="value" data-live="net">↑ {{ met.net_up_mbps }}<small> Mbit/s</small></div><div class="meta">↓ {{ met.net_down_mbps }} Mbit/s</div></div>{% endif %}
+  {% if met.on_battery is defined %}<div class="card stat rise" style="--i: 7"><div class="label">power</div><div class="value">{% if met.on_battery %}{{ met.battery_pct|int }}<small> % battery</small>{% else %}plugged in{% endif %}</div></div>{% endif %}
+  <div class="card stat rise" style="--i: 8"><div class="label">this session</div><div class="value" data-live="sr">{{ met.session_rounds|default(0) }}<small> rounds</small></div><div class="meta">{{ met.session_samples|default(0)|num }} samples</div></div>
+  <div class="card stat rise" style="--i: 9"><div class="label">all time</div><div class="value">{{ m.rounds_served }}<small> rounds</small></div><div class="meta">{{ m.samples_verified|num }} samples verified · honesty {{ '%.2f'|format(m.honesty) }}</div></div>
 </div>
-<dl class="kv inline">
-  <div><dt>this session</dt><dd>{{ met.session_rounds|default(0) }} rounds · {{ met.session_samples|default(0)|num }} samples</dd></div>
-  <div><dt>all time</dt><dd>{{ m.rounds_served }} rounds · {{ m.samples_verified|num }} samples verified</dd></div>
-  <div><dt>honesty</dt><dd>{{ '%.2f'|format(m.honesty) }}</dd></div>
-</dl>
 <h2>Recent rounds</h2>
 {% if recent %}
-<table><thead><tr><th>job</th><th class="num">round</th><th>status</th><th class="num">samples</th><th class="num">loss end</th><th class="num">bytes</th></tr></thead>
-<tbody>{% for u in recent %}<tr><td><a href="/jobs/{{ u.job_id }}">{{ u.job_id }}</a></td><td class="num">{{ u.round_index }}</td><td>{{ u.status }}</td><td class="num">{{ u.samples|num }}</td><td class="num">{{ u.loss_end|f3 }}</td><td class="num">{{ u.frame_bytes|bytes }}</td></tr>{% endfor %}</tbody></table>
+<table><thead><tr><th>job</th><th class="num">round</th><th>status</th><th class="num">samples</th><th class="num">loss end</th><th class="num">score</th><th class="num">bytes</th></tr></thead>
+<tbody>{% for u in recent %}<tr><td><a href="/jobs/{{ u.job_id }}">{{ u.job_id }}</a></td><td class="num">{{ u.round_index }}</td><td>{{ u.status }}{% if u.reject_reason %} <span class="muted small">{{ u.reject_reason }}</span>{% endif %}</td><td class="num">{{ u.samples|num }}</td><td class="num">{{ u.loss_end|f3 }}</td><td class="num">{{ u.score|f3 }}</td><td class="num">{{ u.frame_bytes|bytes }}</td></tr>{% endfor %}</tbody></table>
 {% else %}<p class="empty">No rounds yet.</p>{% endif %}
 <h2>Log</h2>
 {% if logs %}<pre class="log">{% for l in logs %}{{ l.at.strftime('%H:%M:%S') }} {{ l.level|upper }} {{ l.message }}

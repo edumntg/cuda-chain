@@ -55,3 +55,23 @@
   document.addEventListener("htmx:afterSwap", function () { chart = null; drawChart(); });
   window.addEventListener("resize", function () { if (chart) { var el = document.getElementById("loss-chart"); chart.setSize({ width: Math.max(320, el.clientWidth), height: 220 }); } });
 })();
+
+// Highlight numbers that changed after an htmx refresh, so a live table reads as live.
+(function () {
+  document.addEventListener("htmx:beforeSwap", function (e) {
+    var target = e.detail.target;
+    if (!target) return;
+    target._before = {};
+    target.querySelectorAll("[data-live]").forEach(function (n) { target._before[n.getAttribute("data-live")] = n.textContent; });
+  });
+  document.addEventListener("htmx:afterSwap", function (e) {
+    var target = e.detail.target;
+    if (!target || !target._before) return;
+    target.querySelectorAll("[data-live]").forEach(function (n) {
+      var key = n.getAttribute("data-live");
+      if (key in target._before && target._before[key] !== n.textContent) {
+        n.classList.remove("flash"); void n.offsetWidth; n.classList.add("flash");
+      }
+    });
+  });
+})();

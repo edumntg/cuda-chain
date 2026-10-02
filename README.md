@@ -520,11 +520,16 @@ Settings      Owner/Admin   org policies (availability defaults, caps, retention
 ```
 
 Design rules: one page answers one question ("is my machine training?", "is the fleet
-healthy?", "where is my job?"); the most important number is first and large; every live
-number carries a sparkline of the last hour; every table row opens a detail page whose URL
-the CLI also prints; status colours are the same everywhere: **training** green, **idle**
-blue, **paused** yellow, **unavailable** (outside window, on battery) grey, **offline** red,
-**error** magenta.
+healthy?", "where is my job?"); the most important number is first and large, on a card;
+every live number carries a sparkline of the last hour; every table row opens a detail page
+whose URL the CLI also prints; status colours are the same everywhere: **training** green,
+**idle** blue, **paused** yellow, **unavailable** (outside window, on battery) grey,
+**offline** red, **error** magenta. The Overview and Fleet pages open with a live SVG
+diagram of the coordinator, the running jobs and the machines; a machine's path moves
+while it sends an update and its status dot pulses with each heartbeat. The job page shows
+the round in progress the same way: shards, trainers, aggregation, weights. Motion only
+carries information (data moving, a live heartbeat, first-paint order) and stops under
+`prefers-reduced-motion`.
 
 **Fleet (Admin, Operator).** The scenario is a company with 100 employee machines.
 

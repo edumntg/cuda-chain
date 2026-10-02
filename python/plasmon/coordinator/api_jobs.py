@@ -59,6 +59,7 @@ def round_out(r: db.Round) -> dict[str, Any]:
     return {
         "index": r.index,
         "status": r.status,
+        "theta": r.theta_blob,
         "opened_at": r.opened_at,
         "deadline_at": r.deadline_at,
         "closed_at": r.closed_at,

@@ -1,28 +1,26 @@
 {% import "_macros.html" as m %}
-<div class="focal">
-  <div class="big">{{ summary.online }}<span class="muted"> / {{ summary.machines }}</span></div>
-  <div class="label">machines online</div>
+<div class="cards">
+  <div class="card stat accent rise" style="--i: 0"><div class="label">machines online</div><div class="value" data-live="online">{{ summary.online }}<small> / {{ summary.machines }}</small></div><div class="meta">{{ summary.training }} training · {{ summary.idle }} idle</div></div>
+  <div class="card stat rise" style="--i: 1"><div class="label">jobs running</div><div class="value" data-live="jobs">{{ summary.jobs_running }}</div><div class="meta">{{ active_jobs|length }} shown below</div></div>
+  <div class="card stat rise" style="--i: 2"><div class="label">rounds in the last hour</div><div class="value" data-live="rounds">{{ summary.rounds_last_hour }}</div><div class="meta">closed and verified</div></div>
+  <div class="card stat rise" style="--i: 3"><div class="label">samples verified</div><div class="value" data-live="samples">{{ summary.samples_verified|num }}</div><div class="meta">all machines, all time</div></div>
+  <div class="card stat rise" style="--i: 4"><div class="label">attention</div><div class="value" data-live="attention">{{ summary.error + summary.offline }}</div><div class="meta">{{ m.status('error') }} {{ summary.error }} · {{ m.status('offline') }} {{ summary.offline }}</div></div>
 </div>
-<ul class="totals" aria-label="Machine status totals">
-  <li>{{ m.status('training') }} {{ summary.training }}</li>
-  <li>{{ m.status('idle') }} {{ summary.idle }}</li>
-  <li>{{ m.status('paused') }} {{ summary.paused }}</li>
-  <li>{{ m.status('unavailable') }} {{ summary.unavailable }}</li>
-  <li>{{ m.status('offline') }} {{ summary.offline }}</li>
-  <li>{{ m.status('error') }} {{ summary.error }}</li>
-</ul>
-<dl class="kv">
-  <div><dt>jobs running</dt><dd>{{ summary.jobs_running }}</dd></div>
-  <div><dt>rounds in the last hour</dt><dd>{{ summary.rounds_last_hour }}</dd></div>
-</dl>
 <h2>Active jobs</h2>
 {% if active_jobs %}
-<table>
-  <thead><tr><th>job</th><th>owner</th><th class="num">round</th><th class="num">eval loss</th><th class="num">eval acc</th><th>loss per round</th></tr></thead>
-  <tbody>
+<div class="jobcards">
   {% for j in active_jobs %}
-    <tr><td><a href="/jobs/{{ j.id }}">{{ j.name }}</a></td><td>{{ j.owner.email if j.owner else '' }}</td><td class="num">{{ j.round_index }} / {{ j.total_rounds }}</td><td class="num">{{ j.last_eval_loss|f3 }}</td><td class="num">{{ j.last_eval_acc|pct }}</td><td>{{ m.spark(losses[j.id]) }}</td></tr>
+  <a class="card jobcard rise" style="--i: {{ loop.index }}" href="/jobs/{{ j.id }}">
+    <div class="top"><span class="name">{{ j.name }}</span><span class="chip chip-{{ j.status }}"><span class="dot"></span>{{ j.status }}</span></div>
+    <div class="progress" role="progressbar" aria-valuenow="{{ j.round_index }}" aria-valuemin="0" aria-valuemax="{{ j.total_rounds }}" aria-label="rounds"><span style="width: {{ (100 * j.round_index / j.total_rounds)|int }}%"></span></div>
+    <dl class="nums">
+      <div><dt>round</dt><dd data-live="r-{{ j.id }}">{{ j.round_index }}<small class="muted"> / {{ j.total_rounds }}</small></dd></div>
+      <div><dt>eval loss</dt><dd data-live="l-{{ j.id }}">{{ j.last_eval_loss|f3 or '–' }}</dd></div>
+      <div><dt>accuracy</dt><dd data-live="a-{{ j.id }}">{{ j.last_eval_acc|pct or '–' }}</dd></div>
+    </dl>
+    <div>{{ m.spark(losses[j.id], 220, 28) }}</div>
+    <div class="muted small">{{ j.owner.email if j.owner else '' }} · {{ j.spec.model.arch }}</div>
+  </a>
   {% endfor %}
-  </tbody>
-</table>
+</div>
 {% else %}<p class="empty">No job is running. Submit one with <code>plasmon job submit job.yaml</code> or <a href="/jobs/new">from this page</a>.</p>{% endif %}

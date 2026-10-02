@@ -6,7 +6,7 @@
     <tr>
       <td><a href="/jobs/{{ j.id }}">{{ j.name }}</a><br><span class="muted small">{{ j.id }}</span></td>
       <td>{{ j.owner.email if j.owner else '' }}</td>
-      <td><span class="jobstatus jobstatus-{{ j.status }}">{{ j.status }}</span></td>
+      <td><span class="chip chip-{{ j.status }}"><span class="dot"></span>{{ j.status }}</span></td>
       <td class="num">{{ j.round_index }} / {{ j.total_rounds }}</td>
       <td class="num">{{ j.last_eval_loss|f3 }}</td>
       <td class="num">{{ j.last_eval_acc|pct }}</td>

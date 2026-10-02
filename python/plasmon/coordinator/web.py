@@ -145,6 +145,7 @@ def _summary(session: Session) -> dict:
         "error": counts.get("error", 0),
         "jobs_running": session.scalar(select(func.count()).select_from(db.Job).where(db.Job.status == "running")),
         "rounds_last_hour": session.scalar(select(func.count()).select_from(db.Round).where(db.Round.status == "closed", db.Round.closed_at >= since)),
+        "samples_verified": int(session.scalar(select(func.coalesce(func.sum(db.Machine.samples_verified), 0))) or 0),
     }
 
 
@@ -240,7 +241,17 @@ def job_page(request: Request, job_id: str, p: Principal = Depends(principal_opt
     updates = session.scalars(select(db.Update).where(db.Update.job_id == job.id).order_by(db.Update.round_index.desc(), db.Update.id).limit(200)).all()
     closed = [r for r in rounds if r.status == "closed"]
     series = {"rounds": [r.index for r in closed], "loss": [r.eval_loss for r in closed], "acc": [r.eval_acc for r in closed]}
-    return render(request, "job.html", p, job=job, rounds=rounds, updates=updates, series=series, show_names=auth.role_at_least(user.role, "operator"))
+    return render(request, "job.html", p, job=job, rounds=rounds, updates=updates, series=series, after=_weights_after(job, rounds), show_names=auth.role_at_least(user.role, "operator"))
+
+
+def _weights_after(job: db.Job, rounds: list[db.Round]) -> dict[int, str]:
+    """Blob id of the weights produced by each closed round: the next round's start, or the job's latest."""
+    out = {}
+    for i, r in enumerate(rounds):
+        if r.status != "closed":
+            continue
+        out[r.index] = rounds[i + 1].theta_blob if i + 1 < len(rounds) else job.theta_blob
+    return out
 
 
 @router.get("/partials/jobs/{job_id}", response_class=HTMLResponse)
@@ -253,7 +264,24 @@ def job_partial(request: Request, job_id: str, p: Principal = Depends(principal_
     updates = session.scalars(select(db.Update).where(db.Update.job_id == job.id).order_by(db.Update.round_index.desc(), db.Update.id).limit(200)).all()
     closed = [r for r in rounds if r.status == "closed"]
     series = {"rounds": [r.index for r in closed], "loss": [r.eval_loss for r in closed], "acc": [r.eval_acc for r in closed]}
-    return render(request, "partials/job_live.html", p, job=job, rounds=rounds, updates=updates, series=series, show_names=auth.role_at_least(user.role, "operator"))
+    return render(request, "partials/job_live.html", p, job=job, rounds=rounds, updates=updates, series=series, after=_weights_after(job, rounds), show_names=auth.role_at_least(user.role, "operator"))
+
+
+@router.get("/jobs/{job_id}/download")
+def job_download(job_id: str, blob: str | None = None, p: Principal = Depends(principal_optional), session: Session = Depends(get_session), state=Depends(get_state)):
+    """The latest weights, or the weights after a given round (`blob` must belong to the job)."""
+    from fastapi.responses import Response
+
+    user = need_user(p)
+    job = session.get(db.Job, job_id)
+    if job is None or (job.owner_id != user.id and not auth.role_at_least(user.role, "operator")):
+        raise HTTPException(404, "no such job")
+    allowed = {job.theta_blob, job.init_blob, *session.scalars(select(db.Round.theta_blob).where(db.Round.job_id == job.id)).all()}
+    chosen = blob or job.theta_blob
+    if chosen not in allowed or not state.blobs.exists(chosen):
+        raise HTTPException(404, "no such checkpoint for this job")
+    suffix = "latest" if chosen == job.theta_blob else chosen[:8]
+    return Response(state.blobs.get(chosen), media_type="application/octet-stream", headers={"content-disposition": f'attachment; filename="{job.name}-{suffix}.safetensors"'})
 
 
 @router.post("/jobs/{job_id}/cancel")

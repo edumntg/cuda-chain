@@ -57,21 +57,38 @@ def settle_round(session: Session, cfg: CreditsConfig, job: db.Job, round_index:
     weights = [max(u.score or 0.0, 0.0) * max(u.samples, 1) for u in accepted]
     if sum(weights) <= 0:
         weights = [float(max(u.samples, 1)) for u in accepted]
-    total_w = sum(weights)
+    shares = split_integer(pool, weights)
     paid = 0
-    for u, w in zip(accepted, weights):
-        share = int(pool * w / total_w)
+    for u, share in zip(accepted, shares):
         if share <= 0:
             continue
         u.credits = share
         paid += share
         session.add(db.CreditEntry(user_id=u.machine.user_id, machine_id=u.machine_id, job_id=job.id, round_index=round_index, amount=share, kind="earn", memo=f"{job.name} round {round_index}: {u.samples} samples, score {u.score or 0:.3f}"))
-    remainder = cost - paid  # the fee plus rounding
+    remainder = cost - paid  # exactly the fee: the shares sum to the pool
     if remainder:
         session.add(db.CreditEntry(user_id=None, job_id=job.id, round_index=round_index, amount=remainder, kind="fee", memo=f"{job.name} round {round_index}"))
     job.credits_spent += cost
     stop = (job.spec.get("budget", {}).get("max_credits") is not None and job.credits_spent >= job.spec["budget"]["max_credits"]) or available - cost <= 0
     return cost, not stop
+
+
+def split_integer(total: int, weights: list[float]) -> list[int]:
+    """Split `total` into integers proportional to `weights`, summing exactly to `total`
+    (largest remainder method). Avoids the float rounding that turns 900 into 899."""
+    if total <= 0 or not weights:
+        return [0] * len(weights)
+    scale = sum(weights)
+    if scale <= 0:
+        weights = [1.0] * len(weights)
+        scale = float(len(weights))
+    exact = [total * w / scale for w in weights]
+    floors = [int(x) for x in exact]
+    remainder = total - sum(floors)
+    order = sorted(range(len(weights)), key=lambda i: exact[i] - floors[i], reverse=True)
+    for i in order[:remainder]:
+        floors[i] += 1
+    return floors
 
 
 def entries_for(session: Session, user_id: str, limit: int = 100) -> list[db.CreditEntry]:

@@ -148,3 +148,13 @@ def test_job_stops_when_credits_run_out(credit_server, dataset_dir, tmp_path, mo
     assert final["status"] == "cancelled" and final["status_detail"] == "out of credits", final
     assert final["round"] == 1 and final["credits_spent"] == 1000
     assert poor.get("/v1/credits/me")["balance"] == 900  # paid 1,000, earned 90 % of it back as the only trainer
+
+
+def test_split_integer_sums_exactly():
+    from plasmon.coordinator.credits import split_integer
+
+    assert split_integer(900, [0.3]) == [900]
+    assert sum(split_integer(58, [1.7, 2.9, 0.4])) == 58
+    assert split_integer(10, [1, 1, 1]) == [4, 3, 3]
+    assert split_integer(0, [1, 2]) == [0, 0]
+    assert sum(split_integer(7, [0.0, 0.0])) == 7

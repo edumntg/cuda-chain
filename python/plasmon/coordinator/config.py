@@ -65,6 +65,17 @@ class WebhookConfig(BaseModel):
     format: Literal["json", "slack"] = "json"
 
 
+class CreditsConfig(BaseModel):
+    """Internal credits. Off by default; a company turns it on for chargeback, the public
+    network for payouts. No payment provider is wired in: admins grant credits."""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = False
+    fee_pct: int = Field(default=10, ge=0, le=100)
+    grant_on_register: int = Field(default=0, ge=0)
+    unit: str = "credit"
+
+
 class RetentionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     heartbeats_hours: int = 24
@@ -123,6 +134,7 @@ class ServerConfig(BaseModel):
     retention: RetentionConfig = RetentionConfig()
     scoring: ScoringConfig = ScoringConfig()
     webhooks: list[WebhookConfig] = Field(default_factory=list)
+    credits: CreditsConfig = CreditsConfig()
     run_worker: bool = True  # the round scheduler runs inside the API process
     tick_interval_s: float = 1.0
 

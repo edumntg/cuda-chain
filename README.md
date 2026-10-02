@@ -1017,9 +1017,14 @@ plasmon/
       job submission form, webhook notifications (JSON or Slack), `public` mode with open
       registration, `plasmon dashboard` tabbed TUI, `docs/ALPHA-RUN.md`. The alpha run
       itself (a public server, a reference model, volunteers) has not been executed.
-- [ ] **M6 Paid jobs.** Credits and plans in the dashboard (Stripe, USDC in; USDC out),
-      job submission form, history and invoices, allow-listed fine-tune/LoRA jobs,
-      community validators with bonds, P2P seeding. (Phase 2.)
+- [x] **M6 Credits.** Internal credits: welcome grants, per-round settlement (job owner
+      pays per 1,000 accepted samples; machine owners earn by score × samples; fee
+      account), balances, admin grants, CSV export for chargeback, Credits page,
+      `plasmon credits`, jobs stop when the owner runs out. Not done: Stripe or USDC
+      on-ramps and payouts, plans, invoices, LoRA jobs, staked community validators, P2P
+      seeding.
+- [ ] **M6b Payments.** Card and USDC on-ramps, payouts, plans and invoices on top of the
+      credit ledger. (Phase 2.)
 - [ ] **M7 Contracts and quorum coordinator.** (Phase 3.)
 - [ ] **M8 Pipeline parallelism, async rounds, custom code sandbox.** (Phase 4.)
 

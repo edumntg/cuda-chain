@@ -744,3 +744,72 @@ pub fn policy_show(server: Option<&str>, json: bool) -> Result<()> {
     );
     Ok(())
 }
+
+// ----- credits (M6) ------------------------------------------------------------------
+
+pub fn credits_me(server: Option<&str>, json: bool) -> Result<()> {
+    let api = api(server)?;
+    let me = api.get("/v1/credits/me?limit=30")?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&me)?);
+        return Ok(());
+    }
+    if me["enabled"] != true {
+        println!("credits are off on this server");
+        return Ok(());
+    }
+    println!("balance: {} {}s", me["balance"], s(&me["unit"]));
+    let rows: Vec<Vec<String>> = me["entries"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|e| {
+            vec![
+                s(&e["at"]).chars().take(19).collect(),
+                s(&e["kind"]),
+                e["amount"].to_string(),
+                s(&e["job_id"]),
+                s(&e["memo"]),
+            ]
+        })
+        .collect();
+    if !rows.is_empty() {
+        print!(
+            "{}",
+            table(&["when (UTC)", "kind", "amount", "job", "memo"], &rows)
+        );
+    }
+    Ok(())
+}
+
+pub fn credits_grant(server: Option<&str>, email: &str, amount: i64, memo: &str) -> Result<()> {
+    let api = api(server)?;
+    let out = api.post(
+        "/v1/credits/grant",
+        &serde_json::json!({"email": email, "amount": amount, "memo": memo}),
+    )?;
+    println!(
+        "granted {} to {}; balance now {}",
+        out["granted"],
+        s(&out["email"]),
+        out["balance"]
+    );
+    Ok(())
+}
+
+pub fn credits_users(server: Option<&str>, json: bool) -> Result<()> {
+    let api = api(server)?;
+    let rows_v = api.get("/v1/credits/users")?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&rows_v)?);
+        return Ok(());
+    }
+    let rows: Vec<Vec<String>> = rows_v
+        .as_array()
+        .into_iter()
+        .flatten()
+        .map(|r| vec![s(&r["email"]), s(&r["role"]), r["balance"].to_string()])
+        .collect();
+    print!("{}", table(&["user", "role", "balance"], &rows));
+    Ok(())
+}

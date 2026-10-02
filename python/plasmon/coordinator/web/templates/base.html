@@ -28,6 +28,7 @@
     {% endif %}
     <a href="/leaderboard" {% if active == 'leaderboard' %}aria-current="page"{% endif %}>Leaderboard</a>
     <a href="/ledger" {% if active == 'ledger' %}aria-current="page"{% endif %}>Ledger</a>
+    <a href="/credits" {% if active == 'credits' %}aria-current="page"{% endif %}>Credits</a>
     <a href="/account" {% if active == 'account' %}aria-current="page"{% endif %}>Account</a>
     {% if role_at_least(user.role, 'admin') %}
     <a href="/users" {% if active == 'users' %}aria-current="page"{% endif %}>Users</a>

@@ -112,9 +112,12 @@ def leaderboard(limit: int = 20, p: Principal = Depends(principal_optional), ses
     """Machines by verified samples. Names are visible to everyone who can log in."""
     if p.user is None:
         raise HTTPException(401, "login required")
+    from . import credits
+
     rows = session.scalars(select(db.Machine).where(db.Machine.samples_verified > 0).order_by(db.Machine.samples_verified.desc()).limit(min(limit, 100))).all()
+    earned = credits.earned_by_machine(session)
     return [
-        {"rank": i + 1, "name": m.name, "node_id": m.node_id[:8], "owner": m.user.email if m.user else None, "samples_verified": m.samples_verified, "rounds_served": m.rounds_served, "honesty": m.honesty, "status": m.status}
+        {"rank": i + 1, "name": m.name, "node_id": m.node_id[:8], "owner": m.user.email if m.user else None, "samples_verified": m.samples_verified, "rounds_served": m.rounds_served, "honesty": m.honesty, "status": m.status, "credits_earned": earned.get(m.id, 0)}
         for i, m in enumerate(rows)
     ]
 

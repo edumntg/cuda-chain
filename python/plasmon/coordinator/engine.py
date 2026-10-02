@@ -23,7 +23,7 @@ from ..core import frame as fr
 from ..core.jobspec import JobSpec
 from ..train import data, diloco, weights
 from ..validator import scoring
-from . import db, ledger
+from . import credits, db, ledger
 from .events import Bus
 
 log = logging.getLogger("plasmon.engine")
@@ -56,7 +56,10 @@ class Assignment:
 
 
 class Engine:
-    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None, scoring_cfg=None, notifier=None):
+    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None, scoring_cfg=None, notifier=None, credits_cfg=None):
+        from .config import CreditsConfig
+
+        self.credits_cfg = credits_cfg or CreditsConfig()
         self.notifier = notifier
         self.blobs = blobs
         self.bus = bus
@@ -85,6 +88,11 @@ class Engine:
                 raise EngineError(f"blob {blob_id[:12]} was not uploaded", 409)
         if not shards:
             raise EngineError("a job needs at least one shard")
+        if self.credits_cfg.enabled and spec.budget.credits_per_1k_samples > 0:
+            have = credits.balance(session, owner.id)
+            need = spec.budget.max_credits if spec.budget.max_credits is not None else 1
+            if have < max(need, 1):
+                raise EngineError(f"not enough credits: balance {have}, this job needs {need}", 402)
         job = db.Job(
             owner_id=owner.id,
             name=spec.name,
@@ -396,6 +404,7 @@ class Engine:
         rnd.mean_loss_end = sum(losses) / len(losses) if losses else None
         rnd.bytes_in = sum(u.frame_bytes for u in accepted)
         rnd.timings = {"aggregate_s": round(t_agg - t0, 3), "eval_s": round(t_eval - t_agg, 3)}
+        spent, can_continue = credits.settle_round(session, self.credits_cfg, job, rnd.index, accepted, spec.budget.credits_per_1k_samples)
         ledger.append(
             session,
             self.server,
@@ -409,6 +418,7 @@ class Engine:
                 "rejected": [{"node": u.machine.node_id, "reason": u.reject_reason} for u in updates if u.status == "rejected"],
                 "eval_loss_milli": int(eval_loss * 1000),
                 "eval_acc_milli": int(eval_acc * 1000),
+                "credits_spent": spent,
             },
         )
         job.theta_blob = new_blob
@@ -416,13 +426,21 @@ class Engine:
         job.last_eval_loss, job.last_eval_acc = eval_loss, eval_acc
         job.round_index += 1
         finished = job.round_index >= job.total_rounds
+        out_of_credits = not can_continue and not finished
         if finished:
             job.status = "completed"
             job.finished_at = db.now()
-            ledger.append(session, self.server, "job_finished", {"job": job.id, "status": "completed", "rounds": job.round_index, "theta": new_blob})
+            ledger.append(session, self.server, "job_finished", {"job": job.id, "status": "completed", "rounds": job.round_index, "theta": new_blob, "credits_spent": job.credits_spent})
+        elif out_of_credits:
+            job.status = "cancelled"
+            job.status_detail = "out of credits" if job.spec.get("budget", {}).get("max_credits") is None or job.credits_spent < job.spec["budget"]["max_credits"] else "credit budget reached"
+            job.finished_at = db.now()
+            ledger.append(session, self.server, "job_finished", {"job": job.id, "status": "cancelled", "rounds": job.round_index, "theta": new_blob, "credits_spent": job.credits_spent, "reason": job.status_detail})
         else:
             self._open_round(session, job, spec)
         session.commit()
+        if out_of_credits:
+            self.notify("job.cancelled", f"job {job.name} ({job.id}) stopped after {job.round_index} rounds: {job.status_detail}", job=job.id, name=job.name)
         if finished:
             self.notify("job.completed", f"job {job.name} ({job.id}) completed: eval loss {eval_loss:.4f}, accuracy {100 * eval_acc:.1f} %", job=job.id, name=job.name, eval_loss=eval_loss, eval_acc=eval_acc)
         self.bus.publish(

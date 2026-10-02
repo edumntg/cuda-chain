@@ -1,0 +1,29 @@
+{% extends "base.html" %}{% set active = 'credits' %}{% block title %}Credits{% endblock %}
+{% block content %}
+<h1>Credits</h1>
+{% if not enabled %}
+<p class="empty">Credits are off on this server. An admin can turn them on with <code>credits.enabled: true</code> in <code>plasmon-server.yaml</code>. Then every accepted round moves credits from the job owner to the owners of the machines that trained it.</p>
+{% else %}
+{% if result == 'granted' %}<p class="ok" role="status">Credits granted.</p>{% elif result.startswith('error:') %}<p class="error" role="alert">{{ result[6:] }}</p>{% endif %}
+<div class="focal"><div class="big">{{ balance|num }}</div><div class="label">{{ unit }}s available</div></div>
+<p class="muted">A job pays its price per 1,000 accepted samples each round. {{ 100 - fee_pct }} % goes to the owners of the machines that trained, weighted by score × samples; {{ fee_pct }} % is the fee.</p>
+<h2>Your movements</h2>
+{% if entries %}
+<table><thead><tr><th>when</th><th>kind</th><th class="num">amount</th><th>job</th><th>memo</th></tr></thead>
+<tbody>{% for e in entries %}<tr><td>{{ e.at|ago }} ago</td><td>{{ e.kind }}</td><td class="num">{{ e.amount|num }}</td><td>{% if e.job_id %}<a href="/jobs/{{ e.job_id }}">{{ e.job_id }}</a>{% endif %}</td><td class="small">{{ e.memo }}</td></tr>{% endfor %}</tbody></table>
+{% else %}<p class="empty">No movements yet. Lend a machine to earn, or submit a job with <code>budget.credits_per_1k_samples</code> to spend.</p>{% endif %}
+{% if is_admin %}
+<h2>Grant credits</h2>
+<form method="post" action="/credits/grant" class="row-form">
+  <label>User email <input name="email" type="email" required></label>
+  <label>Amount <input name="amount" type="number" min="1" required></label>
+  <label>Memo <input name="memo" type="text" maxlength="200"></label>
+  <button type="submit">Grant</button>
+</form>
+<h2>Balances</h2>
+<table><thead><tr><th>user</th><th>role</th><th class="num">balance</th></tr></thead>
+<tbody>{% for b in all_balances %}<tr><td>{{ b.email }}</td><td>{{ b.role }}</td><td class="num">{{ b.balance|num }}</td></tr>{% endfor %}</tbody></table>
+<p class="muted small">Export for chargeback: <a href="/v1/credits/export.csv?since_days=30">last 30 days as CSV</a> · <code>plasmon credits export --since-days 30</code></p>
+{% endif %}
+{% endif %}
+{% endblock %}

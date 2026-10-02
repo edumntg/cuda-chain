@@ -36,6 +36,18 @@ MNIST as CSV, one image per row, the label first, then 784 pixels:
 Fashion-MNIST, the same four file names, from
 `https://raw.githubusercontent.com/zalandoresearch/fashion-mnist/master/data/fashion/`.
 
+## If the download fails with a certificate error
+
+`CERTIFICATE_VERIFY_FAILED` means Python did not trust the mirror's certificate.
+
+- macOS with Python from python.org: run once
+  `open "/Applications/Python 3.14/Install Certificates.command"` (your version).
+- Behind a company proxy that inspects TLS: `export SSL_CERT_FILE=/path/to/company-ca.pem`.
+- For the built-in datasets only: `export PLASMON_INSECURE_DOWNLOADS=1`. The downloaded
+  files are checked against their published MD5, so a wrong file is rejected.
+- Or download the files with `curl` (which uses the system certificates) and submit
+  `job-local.yaml`.
+
 ## Point a job at your own copy
 
 `job-local.yaml` uses the folder from the `curl` commands above:

@@ -282,6 +282,7 @@ the two runs on the **Jobs** page.
 | The trainer prints `heartbeat failed: 401` | The machine token was revoked | The trainer re-enrols by itself. If it does not, run `plasmon login` again. |
 | The job stays at round 0 | No trainer is idle, or the trainers cannot reach the server | `plasmon fleet`: each machine must show `idle` or `training`. |
 | A round shows `expired` for one machine | The machine went offline or exceeded `round_timeout_s` | The round closes with the other machine's update. Nothing to do. |
+| `job submit` says `CERTIFICATE_VERIFY_FAILED` | Python from python.org on macOS does not use the system certificates, or a company proxy inspects TLS | Run once `open "/Applications/Python 3.14/Install Certificates.command"` (your version). Behind a company proxy: `export SSL_CERT_FILE=/path/to/company-ca.pem`, or `export PLASMON_INSECURE_DOWNLOADS=1` (the built-in files are checked by MD5), or download the four files with `curl` and submit `examples/mnist/job-local.yaml`. |
 | `No module named torch` on Windows | The install did not finish | Run the install command again and read the last lines of the output. |
 
 ## Stop

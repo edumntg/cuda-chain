@@ -1,0 +1,92 @@
+{
+ "canonical": [
+  {
+   "value": {
+    "b": 1,
+    "a": [
+     true,
+     null,
+     "ñ",
+     "日本"
+    ]
+   },
+   "json": "{\"a\":[true,null,\"ñ\",\"日本\"],\"b\":1}"
+  },
+  {
+   "value": [],
+   "json": "[]"
+  },
+  {
+   "value": {},
+   "json": "{}"
+  },
+  {
+   "value": {
+    "n": -5,
+    "s": "quote\"slash\\"
+   },
+   "json": "{\"n\":-5,\"s\":\"quote\\\"slash\\\\\"}"
+  }
+ ],
+ "blake3": [
+  {
+   "input": "",
+   "digest": "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+  },
+  {
+   "input": "plasmon",
+   "digest": "71a85657cf9cfd33c90c59217f882309df8568efed4507002cb3186450f620d9"
+  },
+  {
+   "input": "thousands of GPUs, one wave",
+   "digest": "ae0891ab90a3c46d77f4ba48fbaa7186e547f0e121683fd64254f032e6d8e8c0"
+  }
+ ],
+ "sign": [
+  {
+   "seed": "0101010101010101010101010101010101010101010101010101010101010101",
+   "node_id": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+   "payload": {
+    "job": "job-1",
+    "round": 12,
+    "node": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c",
+    "blob": "abababababababababababababababababababababababababababababababab"
+   },
+   "signature": "339cdac24be34baea116367d332437788fe017bcc49732d0ec41ae6ad9484ddc0628d77db644176232b9624e173141651e92c1a3fa091a252ad8fc2ff5cf7908"
+  },
+  {
+   "seed": "4242424242424242424242424242424242424242424242424242424242424242",
+   "node_id": "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
+   "payload": {
+    "job": "job-1",
+    "round": 12,
+    "node": "2152f8d19b791d24453242e15f2eab6cb7cffa7b6a5ed30097960e069881db12",
+    "blob": "abababababababababababababababababababababababababababababababab"
+   },
+   "signature": "54a7f6de7f5a9054b54c15cbd1e199fe5bda21230f70c049df6422997b87f92e5a12b44bf5284e377869f8129d0d75ae57875e5a8d6c80492c1badcb77d81609"
+  }
+ ],
+ "assignment": [
+  {
+   "seed": "job-seed",
+   "round": 0,
+   "node": "node-a",
+   "shards": 60,
+   "index": 25
+  },
+  {
+   "seed": "job-seed",
+   "round": 1,
+   "node": "node-a",
+   "shards": 60,
+   "index": 14
+  },
+  {
+   "seed": "job-seed",
+   "round": 999,
+   "node": "node-a",
+   "shards": 60,
+   "index": 31
+  }
+ ]
+}

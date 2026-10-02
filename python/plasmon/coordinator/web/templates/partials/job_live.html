@@ -26,10 +26,10 @@
 <h2>Trainers per round</h2>
 {% if updates %}
 <table>
-  <thead><tr><th class="num">round</th><th>machine</th><th class="num">shard</th><th>status</th><th class="num">samples</th><th class="num">loss start</th><th class="num">loss end</th><th class="num">bytes</th></tr></thead>
+  <thead><tr><th class="num">round</th><th>machine</th><th class="num">shard</th><th>status</th><th class="num">samples</th><th class="num">loss start</th><th class="num">loss end</th><th class="num">gain own</th><th class="num">gain other</th><th class="num">score</th><th class="num">bytes</th></tr></thead>
   <tbody>
   {% for u in updates %}
-    <tr><td class="num">{{ u.round_index }}</td><td>{% if show_names %}<a href="/machine/{{ u.machine.node_id }}">{{ u.machine.name }}</a>{% else %}{{ u.machine.node_id[:8] }}{% endif %}</td><td class="num">{{ u.shard_index }}</td><td>{{ u.status }}{% if u.reject_reason %} <span class="muted small">{{ u.reject_reason }}</span>{% endif %}</td><td class="num">{{ u.samples|num }}</td><td class="num">{{ u.loss_start|f3 }}</td><td class="num">{{ u.loss_end|f3 }}</td><td class="num">{{ u.frame_bytes|bytes }}</td></tr>
+    <tr><td class="num">{{ u.round_index }}</td><td>{% if show_names %}<a href="/machine/{{ u.machine.node_id }}">{{ u.machine.name }}</a>{% else %}{{ u.machine.node_id[:8] }}{% endif %}</td><td class="num">{{ u.shard_index }}</td><td>{{ u.status }}{% if u.reject_reason %} <span class="muted small">{{ u.reject_reason }}</span>{% endif %}</td><td class="num">{{ u.samples|num }}</td><td class="num">{{ u.loss_start|f3 }}</td><td class="num">{{ u.loss_end|f3 }}</td><td class="num">{{ u.gain_assigned|f3 }}</td><td class="num">{{ u.gain_random|f3 }}</td><td class="num">{{ u.score|f3 }}</td><td class="num">{{ u.frame_bytes|bytes }}</td></tr>
   {% endfor %}
   </tbody>
 </table>

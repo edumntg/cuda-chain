@@ -30,7 +30,12 @@ class ModelSpec(StrictModel):
 
 
 class DatasetSpec(StrictModel):
-    source: str = Field(description="builtin://mnist, or a path to a directory of .npz shards")
+    source: str = Field(
+        description="builtin://mnist, builtin://fashion-mnist, an https:// URL or a local path of a .csv, .csv.gz or .npz file, or a directory with the IDX .gz files or .npz shards"
+    )
+    eval_source: str | None = Field(default=None, description="optional test file (same formats); default: the builtin test split or eval_fraction of the data")
+    label_column: Literal["first", "last"] = "first"
+    image_shape: tuple[int, int] = (28, 28)
     shard_size: int = Field(default=1000, ge=64)
     eval_fraction: float = Field(default=0.1, gt=0, lt=0.5)
 

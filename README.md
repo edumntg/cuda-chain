@@ -117,8 +117,8 @@ model:
   arch: llama                                   # from an allow-list in v0 (see sandboxing)
   params: 150M
 dataset:
-  source: hf://HuggingFaceFW/fineweb-edu         # or s3:// or an upload; converted to WebDataset shards
-  tokenizer: hf://plasmon/tinyllama-150m-init
+  source: hf://HuggingFaceFW/fineweb-edu         # today: builtin://mnist, builtin://fashion-mnist, an https:// URL or a path
+  tokenizer: hf://plasmon/tinyllama-150m-init    #        of a .csv/.npz file, or a folder of IDX files; hf:// and s3:// are later
   total_tokens: 3_000_000_000
   shard_size_tokens: 50_000_000
 recipe:

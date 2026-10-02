@@ -83,3 +83,50 @@ fit, an offset points outside the payload, or an index is not smaller than `nume
 
 A trainer cannot change an update after the commit. A trainer that reveals a frame with
 a different id gets no credit for the round.
+
+## 7. Verification at round close
+
+The coordinator, or a validator with the same code, checks every revealed update before
+aggregation.
+
+Cheap checks, in this order. A failure rejects the update:
+
+1. Tensor names must be the names of the model. Shapes must match.
+2. All values must be finite.
+3. The update must not be empty.
+4. The L2 norm of the update must not exceed `norm_clip` times the median norm of the
+   round. The check needs at least three updates.
+5. The machine's honesty must not be below `honesty_floor`.
+
+Loss delta, on a sample of `sample` × updates (default: all):
+
+```
+gain_assigned = L(θ_r; assigned shard) − L(θ_r − Δ; assigned shard)
+gain_random   = L(θ_r; random shard)   − L(θ_r − Δ; random shard)
+```
+
+The random shard is one shard per round, chosen from the job seed and the round index.
+The loss uses at most `max_eval_samples` samples of each shard.
+
+- An update with `gain_assigned < min_gain` is rejected: the training made the model
+  worse on the data the trainer had.
+- The score of an accepted update is `max(gain_assigned, 0)`.
+- Duplicates: updates of one round are compared pairwise by cosine similarity, in
+  commit order. An update with similarity above 0.98 to an update committed earlier is
+  rejected as a duplicate. Commit-reveal makes this sound: a copier can only copy an
+  update after it was revealed, so the copier's commit is the later one.
+- The honesty signal of the round is 1 when `gain_assigned > 0` and the update is not a
+  duplicate, else 0.
+- `honesty ← (1 − α) · honesty + α · signal`, with `α = honesty_alpha`. A new machine
+  starts at 1.0.
+- `gain_random` is stored and shown for review. With shards from one distribution an
+  honest update helps random data almost as much as its own, so the difference does not
+  drive honesty on its own.
+
+Accepted updates are averaged with weights equal to their sample counts. The ledger
+entry of the round lists the accepted updates with their scores and the rejected updates
+with their reasons.
+
+Known limits: one bad update can enter the aggregate before its machine's honesty falls
+below the floor. A trainer that trains honestly on wrong data is indistinguishable from a
+weak trainer. These limits are the same in every live network today.

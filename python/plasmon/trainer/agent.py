@@ -193,13 +193,9 @@ class Agent:
         x, y = data.to_tensors(shard)
         t_fetch = time.perf_counter()
 
-        def on_step(i: int) -> None:
-            self.step = i + 1
-
-        result = diloco.inner_round(spec.model.arch, spec.model.config, theta, x, y, spec.recipe, seed=(hash((job_id, rnd, self.identity.node_id)) & 0xFFFFFFFF), device=self.device, on_step=on_step)
+        result = self.train_round(spec, theta, x, y, job_id, rnd, a)
         t_train = time.perf_counter()
-        comp = self.compressors.setdefault(job_id, compression.Compressor(spec.recipe.compression.topk if spec.recipe.compression.name == "topk" else 1.0, spec.recipe.compression.error_feedback))
-        entries = comp.compress(result.delta)
+        entries = self.make_entries(spec, job_id, result)
         frame = fr.Frame(job_id, rnd, self.identity.node_id, a["theta"], result.samples, entries, {"loss_start": result.loss_start, "loss_end": result.loss_end, "steps": result.steps, "device": str(self.device)})
         encoded = fr.encode(frame)
         blob_id = fr_digest(encoded)
@@ -207,6 +203,7 @@ class Agent:
         self.client.commit(job_id, rnd, blob_id, signature)
         self.client.put_blob(encoded, kind="delta")
         self.client.reveal(job_id, rnd, blob_id)
+        self.after_reveal(job_id, rnd, result)
         t_done = time.perf_counter()
         self.session_rounds += 1
         self.session_samples += result.samples
@@ -232,6 +229,21 @@ class Agent:
             if batt is not None and not batt.power_plugged:
                 return False, "on battery"
         return True, ""
+
+    def train_round(self, spec: JobSpec, theta, x, y, job_id: str, rnd: int, assignment: dict[str, Any]) -> diloco.RoundResult:
+        """The honest inner round. Tests subclass the agent and replace this step."""
+
+        def on_step(i: int) -> None:
+            self.step = i + 1
+
+        return diloco.inner_round(spec.model.arch, spec.model.config, theta, x, y, spec.recipe, seed=(hash((job_id, rnd, self.identity.node_id)) & 0xFFFFFFFF), device=self.device, on_step=on_step)
+
+    def after_reveal(self, job_id: str, rnd: int, result: diloco.RoundResult) -> None:
+        """Called once the update is public. Tests use it to model a copier."""
+
+    def make_entries(self, spec: JobSpec, job_id: str, result: diloco.RoundResult) -> list[fr.TensorEntry]:
+        comp = self.compressors.setdefault(job_id, compression.Compressor(spec.recipe.compression.topk if spec.recipe.compression.name == "topk" else 1.0, spec.recipe.compression.error_feedback))
+        return comp.compress(result.delta)
 
     # ----- main loop ---------------------------------------------------------------
 

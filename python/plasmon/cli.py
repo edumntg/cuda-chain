@@ -237,7 +237,13 @@ def cmd_job_status(args: argparse.Namespace) -> int:
     job = _client(args).job(args.id)
     rows = [[r["index"], r["status"], r["accepted"], f"{r['eval_loss']:.4f}" if r["eval_loss"] is not None else "", f"{100 * r['eval_acc']:.1f} %" if r["eval_acc"] is not None else "", f"{r['bytes_in']:,}"] for r in job["rounds"]]
     head = f"{job['name']} ({job['id']})  {job['status']}  round {job['round']}/{job['total_rounds']}  params {job['param_count']:,}"
-    _print(args, job, head + "\n" + _fmt_table(rows, ["round", "status", "trainers", "eval loss", "eval acc", "bytes in"]))
+    text = head + "\n" + _fmt_table(rows, ["round", "status", "trainers", "eval loss", "eval acc", "bytes in"])
+    if args.updates:
+        ups = _client(args).job_updates(args.id)
+        urows = [[u["round"], u["machine"], u["shard"], u["status"], f"{u['gain_assigned']:.3f}" if u["gain_assigned"] is not None else "", f"{u['gain_random']:.3f}" if u["gain_random"] is not None else "", f"{u['score']:.3f}" if u["score"] is not None else "", u["reject_reason"]] for u in ups]
+        text += "\n\n" + _fmt_table(urows, ["round", "machine", "shard", "status", "gain own", "gain other", "score", "reason"])
+        job["updates"] = ups
+    _print(args, job, text)
     return 0
 
 
@@ -512,6 +518,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(handler=cmd_job_list)
     p = job.add_parser("status", parents=[common])
     p.add_argument("id")
+    p.add_argument("--updates", action="store_true", help="also list every trainer update with its score")
     p.set_defaults(handler=cmd_job_status)
     p = job.add_parser("watch", parents=[common])
     p.add_argument("id")

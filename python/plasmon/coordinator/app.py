@@ -42,7 +42,7 @@ class State:
         self.session_factory = db.make_session_factory(self.engine_db)
         self.blobs = make_store(cfg)
         self.bus = Bus()
-        self.engine = Engine(self.blobs, self.bus, self.server, cfg.policy.heartbeat_interval_s, cfg.retention)
+        self.engine = Engine(self.blobs, self.bus, self.server, cfg.policy.heartbeat_interval_s, cfg.retention, cfg.scoring)
         self.oidc = oidc.Provider(cfg.oidc) if cfg.oidc.enabled else None
         self.sessions = CookieSessions(cfg.auth.session_secret)
         self.scheduler: Scheduler | None = None

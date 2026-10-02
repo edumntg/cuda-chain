@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -20,7 +21,8 @@ from sqlalchemy.orm import Session
 from ..core import assignment, identity
 from ..core import frame as fr
 from ..core.jobspec import JobSpec
-from ..train import compression, data, diloco, weights
+from ..train import data, diloco, weights
+from ..validator import scoring
 from . import db, ledger
 from .events import Bus
 
@@ -54,12 +56,13 @@ class Assignment:
 
 
 class Engine:
-    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None):
+    def __init__(self, blobs, bus: Bus, server: identity.Identity, heartbeat_interval_s: int, retention=None, scoring_cfg=None):
         self.blobs = blobs
         self.bus = bus
         self.server = server
         self.heartbeat_interval_s = heartbeat_interval_s
         self.retention = retention
+        self.scoring = scoring.ScoringConfig(**scoring_cfg.model_dump()) if scoring_cfg is not None else scoring.ScoringConfig()
         self._last_cleanup = 0.0
         self._eval_cache: dict[str, tuple[torch.Tensor, torch.Tensor]] = {}
         self._lock = threading.RLock()
@@ -348,22 +351,22 @@ class Engine:
         updates = session.scalars(
             select(db.Update).where(db.Update.job_id == job.id, db.Update.round_index == rnd.index, db.Update.status == "revealed")
         ).all()
-        deltas, weights_, accepted = [], [], []
+        theta = weights.from_bytes(self.blobs.get(job.theta_blob))
+        decoded: list[tuple[db.Update, dict]] = []
         for u in updates:
             try:
-                frame = fr.decode(self.blobs.get(u.commit_blob))
-                deltas.append(compression.decompress(frame.tensors))
-                weights_.append(float(max(u.samples, 1)))
-                accepted.append(u)
+                _, delta = scoring.decode_delta(self.blobs.get(u.commit_blob))
+                decoded.append((u, delta))
             except (fr.FrameError, FileNotFoundError) as e:
                 u.status = "rejected"
                 u.reject_reason = f"unreadable frame: {e}"
+        deltas, weights_, accepted = self._score(session, job, rnd, spec, theta, decoded)
         if not accepted:
             rnd.status = "open"
             rnd.deadline_at = db.now() + dt.timedelta(seconds=spec.requirements.round_timeout_s)
             session.commit()
+            self.bus.publish(f"job:{job.id}", {"event": "round_reopened", "job": job.id, "round": rnd.index, "reason": "no update passed verification"})
             return
-        theta = weights.from_bytes(self.blobs.get(job.theta_blob))
         avg = diloco.average(deltas, weights_)
         outer = diloco.Outer(spec.recipe.outer_optimizer)
         if job.outer_state_blob:
@@ -378,7 +381,6 @@ class Engine:
         session.add(db.Blob(id=new_blob, size=self.blobs.size(new_blob), kind="theta"))
         for u in accepted:
             u.status = "accepted"
-            u.score = 1.0
             m = session.get(db.Machine, u.machine_id)
             m.rounds_served += 1
             m.samples_verified += u.samples
@@ -399,7 +401,8 @@ class Engine:
                 "round": rnd.index,
                 "theta_in": job.theta_blob,
                 "theta_out": new_blob,
-                "updates": [{"node": u.machine.node_id, "blob": u.commit_blob, "samples": u.samples} for u in accepted],
+                "updates": [{"node": u.machine.node_id, "blob": u.commit_blob, "samples": u.samples, "score_milli": int((u.score or 0) * 1000)} for u in accepted],
+                "rejected": [{"node": u.machine.node_id, "reason": u.reject_reason} for u in updates if u.status == "rejected"],
                 "eval_loss_milli": int(eval_loss * 1000),
                 "eval_acc_milli": int(eval_acc * 1000),
             },
@@ -420,6 +423,51 @@ class Engine:
             {"event": "round_closed", "job": job.id, "round": rnd.index, "eval_loss": eval_loss, "eval_acc": eval_acc, "accepted": len(accepted), "status": job.status},
         )
         self.bus.publish("jobs", {"event": "round_closed", "job": job.id, "round": rnd.index, "status": job.status})
+
+
+    def _score(self, session: Session, job: db.Job, rnd: db.Round, spec: JobSpec, theta, decoded):
+        """Run verification; mark rejected updates; return (deltas, weights, accepted updates)."""
+        import random
+
+        if not decoded:
+            return [], [], []
+        if not self.scoring.enabled:
+            for u, _ in decoded:
+                u.score = 1.0
+            return [d for _, d in decoded], [float(max(u.samples, 1)) for u, _ in decoded], [u for u, _ in decoded]
+        rng = random.Random(f"{job.seed}:{rnd.index}")
+        needed = {u.shard_index for u, _ in decoded}
+        random_shard = rng.randrange(len(job.shards))
+        needed.add(random_shard)
+        shard_bytes = {i: self.blobs.get(job.shards[i]["blob"]) for i in needed}
+        scorer = scoring.Scorer(self.scoring, spec, theta, shard_bytes, random_shard)
+        norms = sorted(n for n in (scoring.delta_norm(d) for _, d in decoded) if math.isfinite(n))
+        median_norm = norms[len(norms) // 2] if len(norms) >= 3 else None
+        # commit order decides who copied whom: the later commit is the duplicate
+        ordered = sorted(range(len(decoded)), key=lambda i: decoded[i][0].committed_at or db.now())
+        dupes = scoring.duplicates([(i, decoded[i][1]) for i in ordered])
+        deltas, weights_, accepted = [], [], []
+        for idx, (u, delta) in enumerate(decoded):
+            m = session.get(db.Machine, u.machine_id)
+            sampled = rng.random() < self.scoring.sample
+            if idx in dupes:
+                earlier, cos = dupes[idx]
+                verdict = scoring.Verdict(False, f"duplicate of an update committed earlier by {decoded[earlier][0].machine.name} (cosine {cos:.3f})", score=0.0, signal=0)
+            else:
+                verdict = scorer.judge(delta, u.shard_index, median_norm, m.honesty, sampled)
+            u.score = verdict.score
+            u.gain_assigned = verdict.gain_assigned
+            u.gain_random = verdict.gain_random
+            m.honesty = scoring.update_honesty(m.honesty, verdict.signal, self.scoring.honesty_alpha)
+            if verdict.accepted:
+                deltas.append(delta)
+                weights_.append(float(max(u.samples, 1)))
+                accepted.append(u)
+            else:
+                u.status = "rejected"
+                u.reject_reason = verdict.reason
+                self.bus.publish(f"job:{job.id}", {"event": "rejected", "job": job.id, "round": rnd.index, "node": m.node_id, "reason": verdict.reason})
+        return deltas, weights_, accepted
 
 
 def _machine_fits(machine: db.Machine, spec: JobSpec) -> bool:

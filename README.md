@@ -1007,8 +1007,11 @@ plasmon/
       pause/resume/drain, users, invites, audit log, Prometheus metrics, retention,
       `fleet show --watch`, `server status --watch`. Idle detection and CPU caps are not
       enforced yet. Not yet run on a real office fleet.
-- [ ] **M4 Verification.** Gauntlet scoring, OpenSkill ratings, top-G selection, seeded
-      cheating tests (random Δ, copied Δ, wrong shard) all detected.
+- [x] **M4 Verification.** Loss-delta scoring on assigned versus random shards, norm and
+      finiteness checks, per-machine honesty with a floor that excludes repeat offenders,
+      scores in the ledger and the job page. Seeded cheaters (random Δ, copied Δ, wrong
+      shard, NaN) are rejected or lose honesty in tests. Not yet: OpenSkill ratings,
+      sampled re-execution, validators on separate machines.
 - [ ] **M5 Alpha run.** VPS + R2, 150 M reference model, 10–50 invited trainers. Web
       dashboard v1: Overview, Jobs, My machine, Fleet, Server, Users, Ledger; sign-up and
       leaderboard. Full-screen `plasmon dashboard` TUI. (Phase 1 above.)

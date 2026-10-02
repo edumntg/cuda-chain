@@ -43,6 +43,19 @@ class OidcConfig(BaseModel):
         return bool(self.issuer and self.client_id)
 
 
+class ScoringConfig(BaseModel):
+    """Verification of updates at round close. See plasmon.validator.scoring."""
+
+    model_config = ConfigDict(extra="forbid")
+    enabled: bool = True
+    sample: float = Field(default=1.0, gt=0, le=1)
+    norm_clip: float = 8.0
+    min_gain: float = -0.02
+    honesty_alpha: float = 0.25
+    honesty_floor: float = 0.4
+    max_eval_samples: int = 2000
+
+
 class RetentionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     heartbeats_hours: int = 24
@@ -99,6 +112,7 @@ class ServerConfig(BaseModel):
     oidc: OidcConfig = OidcConfig()
     policy: PolicyConfig = PolicyConfig()
     retention: RetentionConfig = RetentionConfig()
+    scoring: ScoringConfig = ScoringConfig()
     run_worker: bool = True  # the round scheduler runs inside the API process
     tick_interval_s: float = 1.0
 

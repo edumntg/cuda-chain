@@ -132,6 +132,8 @@ def list_updates(job_id: str, round: int | None = None, user: db.User = Depends(
             "loss_end": u.loss_end,
             "frame_bytes": u.frame_bytes,
             "score": u.score,
+            "gain_assigned": u.gain_assigned,
+            "gain_random": u.gain_random,
             "reject_reason": u.reject_reason,
         }
         for u in session.scalars(q).all()

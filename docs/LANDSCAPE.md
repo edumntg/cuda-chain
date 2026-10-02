@@ -1,6 +1,6 @@
 # Decentralized AI training: landscape and research notes
 
-Compiled October 2026 to inform the cuda-chain design. Claims link to a primary source
+Compiled October 2026 to inform the plasmon design. Claims link to a primary source
 where one was found; funding and token figures are from press coverage and should be
 re-checked before being quoted externally.
 
@@ -34,7 +34,7 @@ trust assumption critics point at
 dTAO (2025) gave each subnet its own alpha token; subnet tokens reached ~$1.5 B in
 March 2026 ([CoinDesk](https://www.coindesk.com/tech/2026/03/25/bittensor-ecosystem-tokens-value-hit-usd1-5-billion-as-jensen-huang-endorsement-supports-tao-rally)).
 
-**Templar (SN3) / Covenant AI.** The closest existing system to the cuda-chain idea:
+**Templar (SN3) / Covenant AI.** The closest existing system to the plasmon idea:
 miners each train on a shard, submit compressed pseudo-gradients, and are paid in
 proportion to measured contribution.
 

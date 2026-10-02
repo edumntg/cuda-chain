@@ -1,13 +1,17 @@
-# cuda-chain
+# plasmon
 
 **A permissionless network for training machine-learning models on other people's GPUs.**
 Anyone submits a model and a dataset. Volunteer *trainers* each train on a slice of the
 data, their updates are merged, and they are paid in proportion to the training progress
 they verifiably contributed.
 
+**Why "plasmon".** A plasmon is a quantum of collective oscillation: billions of
+electrons in a metal moving together as a single wave. plasmon is that for compute:
+thousands of GPUs, each on its own desk, training as one model.
+
 > **Status: design stage.** This document is the specification: what the network is,
 > how a training round works, what it is built on, and how it goes live. Implementation
-> starts with milestone M0 (§11). Nothing below is implemented yet unless marked.
+> starts with milestone M0 (§12). Nothing below is implemented yet unless marked.
 
 ---
 
@@ -17,14 +21,15 @@ they verifiably contributed.
 2. [Design principles](#2-design-principles)
 3. [How it works](#3-how-it-works)
 4. [Architecture](#4-architecture)
-5. [Interfaces: CLI and web dashboard](#5-interfaces-cli-and-web-dashboard)
-6. [Tech stack](#6-tech-stack)
-7. [Is it a server or a blockchain?](#7-is-it-a-server-or-a-blockchain)
-8. [Going live: from laptop to first users](#8-going-live-from-laptop-to-first-users)
-9. [Prior art and competitors](#9-prior-art-and-competitors)
-10. [Repository layout](#10-repository-layout)
-11. [Roadmap](#11-roadmap)
-12. [Contributing and license](#12-contributing-and-license)
+5. [Interfaces: CLI, dashboard, roles and watch mode](#5-interfaces-cli-dashboard-roles-and-watch-mode)
+6. [Running your own network (self-hosting)](#6-running-your-own-network-self-hosting)
+7. [Tech stack](#7-tech-stack)
+8. [Is it a server or a blockchain?](#8-is-it-a-server-or-a-blockchain)
+9. [Going live: from laptop to first users](#9-going-live-from-laptop-to-first-users)
+10. [Prior art and competitors](#10-prior-art-and-competitors)
+11. [Repository layout](#11-repository-layout)
+12. [Roadmap](#12-roadmap)
+13. [Contributing and license](#13-contributing-and-license)
 
 ---
 
@@ -46,9 +51,11 @@ round starts. When the budget or the token count is exhausted the requester down
 final weights. Trainers are paid per round from the requester's deposit, weighted by their
 verified contribution.
 
-Everything is operated from two surfaces: a **CLI** (`cudachain`) that trainers and
+Everything is operated from two surfaces: a **CLI** (`plasmon`) that trainers and
 requesters live in, and a **web dashboard** where accounts, credits and history live and
-where anyone can watch the network run (§5).
+where anyone can watch the network run (§5). The same software runs the public network
+and a private one: a company can deploy the coordinator on its own server and let its
+employees' machines train each other's models (§6).
 
 The goal is **not** to out-train hyperscalers. It is to make the long tail of training
 work (fine-tunes, domain models, 100 M to 10 B parameter pre-training, RL post-training)
@@ -57,7 +64,7 @@ cheap and open by using hardware that is already switched on and idle.
 ## 2. Design principles
 
 Three decisions shape everything else. Each one follows from what has and has not worked
-in internet-scale training over the last three years (§9).
+in internet-scale training over the last three years (§10).
 
 **Merging is DiLoCo, not step-wise all-reduce and not weight averaging.** Multi-GPU
 training in a datacentre exchanges gradients *every step* over 400 Gbit/s links; over the
@@ -71,7 +78,7 @@ applies the average of all pseudo-gradients to the global model. Communication d
 100–500× and convergence matches data-parallel training within a few percent. With
 pseudo-gradient compression (DeMo / SparseLoCo: top-k 1–3 % plus 2-bit quantization with
 error feedback) the per-round traffic for a 1 B model is tens of megabytes. This is the
-base algorithm of cuda-chain.
+base algorithm of plasmon.
 
 **A coordinator, not a bespoke blockchain.** Every live decentralized training network
 (Templar, Psyche, IOTA, Prime Intellect, Pluralis) has a *logically central* coordinator,
@@ -79,7 +86,7 @@ whether a smart contract, a validator set or an orchestrator service, that owns
 membership, data assignment and round transitions, with *physically decentralized*
 workers doing the compute and a P2P or object-storage layer moving blobs. Payments settle
 on an existing chain. Nobody runs a bespoke blockchain for coordination and nobody does a
-fully peer-to-peer all-reduce in production. cuda-chain has the same shape (§4, §7), and
+fully peer-to-peer all-reduce in production. plasmon has the same shape (§4, §8), and
 spends its engineering on the training, verification and incentive layers rather than on
 a transport protocol.
 
@@ -101,13 +108,13 @@ A requester submits a `job.yaml` (or the equivalent through the CLI / API):
 ```yaml
 name: tinyllama-es-150m
 model:
-  source: hf://cudachain/tinyllama-150m-init   # or a safetensors upload; content-addressed
+  source: hf://plasmon/tinyllama-150m-init   # or a safetensors upload; content-addressed
   framework: pytorch
   arch: llama                                   # from an allow-list in v0 (see sandboxing)
   params: 150M
 dataset:
   source: hf://HuggingFaceFW/fineweb-edu         # or s3:// or an upload; converted to WebDataset shards
-  tokenizer: hf://cudachain/tinyllama-150m-init
+  tokenizer: hf://plasmon/tinyllama-150m-init
   total_tokens: 3_000_000_000
   shard_size_tokens: 50_000_000
 recipe:
@@ -191,7 +198,7 @@ Why this is feasible on home connections (upload is the constraint):
 
 Downloads of θ_{r+1} are larger (the coordinator can send the dense delta or the
 compressed aggregate; the latter is the same order as one update). Pipeline parallelism
-for models that do not fit on one GPU is deliberately out of scope until Phase 4 (§11).
+for models that do not fit on one GPU is deliberately out of scope until Phase 4 (§12).
 
 ### 3.5 Verification and anti-cheating
 
@@ -219,7 +226,7 @@ What this does **not** solve, stated plainly: one bad update can land in the agg
 before its author is down-weighted (mitigated by top-G selection and by clipping each Δ to
 a norm bound); collusion between a majority of validators; and a trainer who honestly trains
 on *wrong* data cannot be distinguished from a slightly weak GPU. These are the open
-problems of the whole field (§9).
+problems of the whole field (§10).
 
 ### 3.6 Rewards and economics
 
@@ -247,16 +254,16 @@ inside a container with no network access, a read-only filesystem, and GPU-only
 capabilities (Docker with `--gpus`, seccomp profile, later gVisor), and is signed by the
 requester.
 
-Dataset privacy: shards are visible to every trainer that gets them. cuda-chain v1 is for
+Dataset privacy: shards are visible to every trainer that gets them. plasmon v1 is for
 **public or licensable data only**; private-data training is a federated-learning problem
-(see Flower in §9) and is out of scope.
+(see Flower in §10) and is out of scope.
 
 ## 4. Architecture
 
 ```
    ┌─────────────────────┐          ┌─────────────────────┐
    │  CLI / TUI          │          │  Web dashboard      │
-   │  cudachain login    │          │  sign-up · plans    │
+   │  plasmon login      │          │  sign-up · plans    │
    │  job · trainer ·    │          │  credits · history  │
    │  validator · net    │          │  live network view  │
    └──────────┬──────────┘          └──────────┬──────────┘
@@ -280,7 +287,7 @@ Dataset privacy: shards are visible to every trainer that gets them. cuda-chain 
          ┌────────────────────┼────────────────────┐
          ▼                    ▼                    ▼
    ┌──────────┐         ┌──────────┐         ┌──────────┐
-   │ trainer  │         │ trainer  │   ...   │ trainer  │     `cudachain trainer start`
+   │ trainer  │         │ trainer  │   ...   │ trainer  │     `plasmon trainer start`
    │ RTX 3090 │         │ RTX 4070 │         │ A100     │     Python · PyTorch · CUDA
    └──────────┘         └──────────┘         └──────────┘
 ```
@@ -291,12 +298,13 @@ Dataset privacy: shards are visible to every trainer that gets them. cuda-chain 
 |---|---|---|
 | `coordinator` | Job registry, round state machine, deterministic data assignment, aggregation, publishing θ_{r+1}, ledger | Phase 1–2: run by the project, fully auditable. Phase 3: stateless replicas behind a multi-validator attestation; aggregation recomputed redundantly by validators |
 | `trainer` | Pull weights, train, compress, commit-reveal, upload | Untrusted; verified by validators |
+| `daemon` | One long-lived connection per machine: warm path for CLI commands, heartbeats and metrics, log shipping, control messages (pause, drain, stream logs) | Runs as the user with a machine-scoped token; can only report about its own machine |
 | `validator` | Score updates, re-execute samples, publish signed scores | Semi-trusted via stake/reputation; scores are public and recomputable |
 | `blobstore` | Move checkpoints, shards and updates | Dumb storage; everything is hashed and signed, so a malicious store can only deny service |
 | `settlement` | Hold deposits, pay out, slash | Phase 1–2: coordinator's ledger. Phase 3: smart contracts |
-| `cli` | `cudachain` TUI and subcommands: login, jobs, trainers, validators, credits, network | Client; holds the node keypair and an API token |
+| `cli` | `plasmon` TUI and subcommands: login, jobs, trainers, validators, credits, network | Client; holds the node keypair and an API token |
 | `web` | Dashboard: accounts, plans and credits, job and trainer history, live network view, public leaderboard and explorer | Client of the same API; no privileged access |
-| `sdk` | Python package used by the CLI and by scripts (`cudachain.Client`) | Client |
+| `sdk` | Python package used by the CLI and by scripts (`plasmon.Client`) | Client |
 
 **Why a coordinator and not a DHT for everything.** Membership, round transitions and
 assignment need a single source of truth with sub-second latency; a DHT gives neither.
@@ -306,33 +314,99 @@ without trusting its history. Blob *transfer* is where P2P pays off (trainers se
 θ_{r+1} to each other rather than everyone hitting one bucket), so that is where the P2P
 layer goes, in Phase 2.
 
-## 5. Interfaces: CLI and web dashboard
+## 5. Interfaces: CLI, dashboard, roles and watch mode
 
 Two front ends, one API. Everything the web app can do, the CLI can do, and vice versa,
 except payments, which only happen in the browser. Both talk to the coordinator with the
 same signed requests; neither has privileges the other lacks.
 
-### 5.1 The CLI (`cudachain`)
+### 5.1 The CLI (`plasmon`)
 
-The CLI is where trainers and requesters spend their time, so it has to feel good. The
-reference points are the current generation of terminal tools (Claude Code, Gemini CLI,
-Codex, `gh`, `boxd`, `pi`): an animated start screen, a real colour theme, live tables and
-progress, keyboard-driven panels, and plain text or JSON when piped.
+The CLI is where trainers and requesters spend their time, so it has to feel good *and*
+be instant. Three reference points shaped it:
 
-**Start-up.** Running `cudachain` with no arguments in a TTY plays a short ASCII animation
-(≈ 1 s, skippable with any key): chain links assembling into the logo with a colour sweep,
-followed by a one-screen status: who you are, credits, trainers online, your active jobs,
-latest round of each. Animation is off when stdout is not a TTY, when `NO_COLOR` or
-`CUDACHAIN_NO_ANIM` is set, or with `--plain`. The frames live in `tui/logo.py` as a list
-of strings so they are easy to redraw.
+- **boxd**: one static binary per platform, installed by a script that checks a SHA-256
+  manifest, with shell completions, up in milliseconds. Its machines boot in under 10 ms
+  because they *resume a snapshot instead of booting*. The CLI borrows the same idea for
+  its network path: keep warm state around, never pay start-up twice.
+- **pi**: a custom terminal renderer that repaints only the lines that changed and uses
+  synchronized output so nothing flickers. That is the rendering bar.
+- **Codex CLI**: rewritten from TypeScript/Node to Rust for millisecond start-up and a
+  dependency-free install. That is the stack decision, confirmed by measurement below.
+
+**Stack: Rust.** `clap` for commands, `ratatui` + `crossterm` for the TUI, `tokio` +
+`reqwest` (rustls, HTTP/2 and HTTP/3) for the API, `ed25519-dalek` and `blake3` for
+identity and content addressing, `keyring` for the OS keychain. One static binary per
+platform, 5–10 MB, no runtime, no interpreter, no `npm`, `pip` or `node` required.
+
+**Why not the alternatives.** Cold start of `--version`, median of 25 runs on a Linux
+x86_64 development box:
+
+| Stack | Start-up | Binary | Used by |
+|---|---|---|---|
+| Rust, release build | **3 ms** | 0.4 MB | Codex CLI, gitui, atuin, yazi, bottom |
+| Go | ~9 ms | ~2 MB | boxd-style tools, lazygit, gh (public benchmark, not re-measured) |
+| Bun-compiled TypeScript | 30 ms | 94 MB | Claude Code (embeds the whole runtime) |
+| Node 24 script | 74 ms | needs Node | pi, Gemini CLI |
+| Python 3.12, no imports | 38 ms | needs Python | |
+| Python + click | 100 ms | | |
+| Python + Rich | 177 ms | | prime (Typer + Rich) starts here, before its own imports |
+
+Rust starts 10× faster than the Bun route and 50× faster than the Python route, and it is
+the language of the pieces the network needs later anyway: Iroh for P2P blobs, the blake3
+reference implementation, and the compression kernels. Go with Bubble Tea would be a fine
+second choice. Python is ruled out for the CLI by the numbers above and stays the language
+of the trainer, where PyTorch is.
+
+**Start-up budget**, enforced in CI with `hyperfine`:
+
+| Path | Budget |
+|---|---|
+| `plasmon --version`, `plasmon --help` | < 5 ms; no config read, no network |
+| `plasmon` home screen, first paint | < 30 ms, from local cache, before any network reply |
+| `plasmon job submit`, local work (validate, hash, sign) | < 50 ms plus upload time for blobs the network has not seen |
+| `plasmon job submit`, round trips to the coordinator | 1 to create the job; 0 extra when all blobs are already known |
+
+**How the submit path stays light**
+
+1. **Nothing to boot.** Single static binary; the async runtime and TLS are initialised
+   lazily by the commands that use the network. `--help` and `--version` never touch them.
+2. **Warm connection.** `plasmon daemon` (the same binary in daemon mode, started on first use,
+   optional) keeps an HTTP/2 connection with an established TLS session to the coordinator
+   and listens on a local Unix socket. Commands connect to the socket in well under a
+   millisecond and reuse the warm connection, skipping TCP and TLS handshakes (one to
+   three round trips, 50–150 ms on a typical link). Without the daemon the CLI connects
+   directly; the coordinator also speaks HTTP/3, so returning clients get QUIC 0-RTT.
+   This is the CLI analogue of what boxd does for machines: do not boot, resume.
+3. **Content addressing and dedupe.** Model and dataset are hashed locally with blake3
+   (multi-threaded, gigabytes per second). The submit request carries hashes; the
+   coordinator returns pre-signed upload URLs only for blobs it does not already have.
+   Resubmitting a job or reusing a dataset uploads nothing.
+4. **Direct-to-storage uploads.** Blobs go straight to object storage in parallel chunks.
+   The coordinator never proxies bytes.
+5. **One small signed request.** The job spec is validated against a schema compiled into
+   the binary, signed with the machine key, and sent as a single request. The reply is the
+   job id and the first round's estimated start.
+6. **Stale-while-revalidate.** Every read command paints from `~/.cache/plasmon/` immediately
+   and refreshes in place when the API answers.
+7. **The intro never costs time.** The start-up animation plays only on the bare `plasmon`
+   command, runs concurrently with the status fetch, is skipped by any key, and is off when
+   stdout is not a TTY or `NO_COLOR` / `PLASMON_NO_ANIM` is set.
+
+**Start-up screen.** Running `plasmon` with no arguments in a TTY plays a short animation
+(≈ 1 s, skippable): a field of scattered dots jitters at random, then locks into a single
+travelling wave that fills in the wordmark with a colour sweep, then a one-screen status
+appears: who you are, credits, trainers online, your active jobs and
+the latest round of each. The frames live in `plasmon-cli/src/tui/logo.rs` as string
+literals so they are easy to redraw.
 
 ```
-  ██████╗██╗   ██╗██████╗  █████╗      ██████╗██╗  ██╗ █████╗ ██╗███╗   ██╗
- ██╔════╝██║   ██║██╔══██╗██╔══██╗    ██╔════╝██║  ██║██╔══██╗██║████╗  ██║
- ██║     ██║   ██║██║  ██║███████║    ██║     ███████║███████║██║██╔██╗ ██║
- ██║     ██║   ██║██║  ██║██╔══██║    ██║     ██╔══██║██╔══██║██║██║╚██╗██║
- ╚██████╗╚██████╔╝██████╔╝██║  ██║    ╚██████╗██║  ██║██║  ██║██║██║ ╚████║
-  ╚═════╝ ╚═════╝ ╚═════╝ ╚═╝  ╚═╝     ╚═════╝╚═╝  ╚═╝╚═╝  ╚═╝╚═╝╚═╝  ╚═══╝
+  ██████╗ ██╗      █████╗ ███████╗███╗   ███╗ ██████╗ ███╗   ██╗
+  ██╔══██╗██║     ██╔══██╗██╔════╝████╗ ████║██╔═══██╗████╗  ██║      ~
+  ██████╔╝██║     ███████║███████╗██╔████╔██║██║   ██║██╔██╗ ██║
+  ██╔═══╝ ██║     ██╔══██║╚════██║██║╚██╔╝██║██║   ██║██║╚██╗██║      thousands of GPUs, one wave
+  ██║     ███████╗██║  ██║███████║██║ ╚═╝ ██║╚██████╔╝██║ ╚████║
+  ╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
   ◆ eduardo        ◆ 1,240 credits        ◆ 37 trainers online        ◆ v0.1.0
 
   JOB                    STATE     ROUND   LOSS     TRAINERS   SPENT
@@ -346,95 +420,375 @@ of strings so they are easy to redraw.
 and `--plain` for logs.
 
 ```
-cudachain                         open the TUI home screen
-cudachain login | logout | whoami device-code login (prints a code and URL; confirm in the browser)
-cudachain init                    create this machine's Ed25519 keypair and link it to your account
+plasmon                                                      open the home screen
+plasmon login | logout | whoami                              device-code login (prints a code and URL; confirm in the browser)
+plasmon init                                                 create this machine's Ed25519 keypair and link it to your account
 
-cudachain job submit job.yaml     validate, estimate cost, confirm, submit
-cudachain job list | status <id> | logs <id> --follow | cancel <id> | download <id> [--round N]
+plasmon job submit job.yaml                                  validate, hash, estimate cost, confirm, submit
+plasmon job list | status <id> | logs <id> --follow | cancel <id> | download <id> [--round N]
 
-cudachain trainer start [--gpus 0,1] [--job <id> | --any] [--max-hours 8]
-cudachain trainer status | stop | earnings
+plasmon trainer start [--gpus 0,1] [--job <id> | --any] [--max-hours 8]
+plasmon trainer status | stop | earnings
 
-cudachain validator start | status
+plasmon validator start | status
 
-cudachain net status | peers | rounds <job>
-cudachain credits                 balance and recent ledger entries; `credits buy` opens the browser
-cudachain ledger verify           re-verify the hash chain and signatures of the public ledger
-cudachain dashboard               full-screen TUI (same panels as the home screen, live)
+plasmon net status | peers | rounds <job>
+plasmon credits                                              balance and recent ledger entries; `credits buy` opens the browser
+plasmon ledger verify                                        re-verify the hash chain and signatures of the public ledger
+plasmon dashboard                                            full-screen TUI (same panels as the home screen, live)
+
+plasmon daemon start | stop | status                         warm-connection daemon (started automatically on first use)
+plasmon update                                               self-update from the signed release manifest
+plasmon completions <shell>                                  install shell completions
 ```
 
 **Live views.** `trainer start` renders a live panel: GPU utilisation and temperature,
-current round, inner-step progress bar, loss sparkline, bytes uploaded this round, verified
+current round, inner-step progress, loss sparkline, bytes uploaded this round, verified
 tokens and credits earned this session. `job logs --follow` renders loss per round,
 trainers per round and spend. `net status` is a table of jobs and a histogram of GPUs by
-model.
+model. ratatui's `Sparkline`, `Gauge`, `Chart` and `BarChart` widgets cover all of these;
+effects such as the colour sweep use `tachyonfx`.
 
-**Login flow.** `cudachain login` requests a device code from the coordinator, prints
-`https://cudachain.dev/device` plus an 8-character code, and polls. The user confirms in
-the browser (creating an account if needed). The CLI stores a scoped API token in the OS
-keychain (fallback: `~/.cudachain/credentials` with mode 600). The machine keypair created
-by `cudachain init` is registered to the account so earnings from that machine accrue to
-the right wallet. Tokens are revocable from the dashboard.
+**Login flow.** `plasmon login` requests a device code from the coordinator, prints
+`https://plasmon.dev/device` plus an 8-character code, and polls. The user confirms in the
+browser (creating an account if needed). The CLI stores a scoped API token in the OS
+keychain (fallback: `~/.config/plasmon/credentials`, mode 600). The machine keypair created by
+`plasmon init` is registered to the account so earnings from that machine accrue to the right
+wallet. Tokens are revocable from the dashboard.
 
-**Why Python for the TUI.** The trainer is Python (PyTorch), and shipping one `pip install
-cudachain` that gives both the trainer and the TUI beats shipping a Go or Node binary plus
-a Python sidecar. The Python TUI stack is mature enough for this: **Typer** for commands,
-**Rich** for colour, tables, progress and the start-up animation (`rich.live`), and
-**Textual** for the full-screen dashboard. If a native binary is ever needed (instant
-start, no Python on the machine), the API is designed so a Bubble Tea or Ink client can be
-added without touching the coordinator.
+**Install.** `curl -fsSL https://plasmon.dev/install.sh | sh` reads a per-platform manifest,
+downloads the binary, verifies its SHA-256, installs to `~/.local/bin`, installs shell
+completions and adds the directory to `PATH` if needed. Also: a Homebrew tap,
+`cargo binstall plasmon`, and `winget` later. `plasmon update` self-updates from the same signed
+manifest. Targets: linux-x86_64, linux-arm64, darwin-arm64, windows-x86_64 for the client
+(training on Windows needs WSL2 for CUDA).
 
-### 5.2 The web dashboard
+**The trainer is a separate process.** The trainer is Python (PyTorch) and is launched
+and supervised by the CLI: `plasmon trainer start` finds or installs the `plasmon` Python package
+in an isolated environment (through `uv` when present), starts it, and talks to it over a
+local socket. The Python package uses the Rust core through a native extension
+(`plasmon_core`, built with PyO3 and maturin) for signing, hashing, Δ framing and blob
+transfer, so there is exactly one implementation of the wire protocol.
 
-The web app is for everything that benefits from a browser: creating an account, paying,
-reading history, and watching the network. It is also the public face of the project.
+### 5.2 Roles and permissions
 
-**Public pages (no login)**
+Everyone in an organisation (or on the public network) has one role. API tokens carry
+scopes that can only narrow it.
 
-- **Network status:** trainers online, GPUs by model, aggregate throughput, active jobs,
-  bytes per round, uptime of the coordinator, last ledger entry hash.
-- **Job explorer:** every public job with its loss curve, rounds, trainers per round, and
-  the score table per round (the verification is public by design, §3.5).
-- **Leaderboard:** trainers by verified tokens, honesty score and uptime; validators by
-  agreement with the median.
-- **Ledger browser:** the hash-chained log, searchable, with a one-click verify.
-
-**Account pages**
-
-- **Sign-up / login:** email + password or magic link, GitHub and Google OAuth, passkeys
-  later. The same accounts the CLI logs into.
-- **Credits and plans:** buy credits by card (Stripe) or USDC; plans give monthly credits
-  at a discount plus perks such as priority scheduling and longer checkpoint retention.
-  Invoices and receipts. Trainers see **earnings** here and configure payout (USDC
-  address; Stripe Connect for fiat in a later phase).
-- **My jobs:** submit through a form that produces the same `job.yaml` the CLI uses, cost
-  estimate before confirming, live loss curve, per-round trainers and scores, download
-  checkpoints, cancel. History of every job with spend.
-- **My trainers:** every linked machine, online state, GPU, last heartbeat, rounds served,
-  earnings, honesty score, and a "revoke" button.
-- **Account:** API tokens (create, scope, revoke), linked keypairs, notification settings
-  (email or webhook when a job finishes or a trainer goes offline).
-- **Admin (project staff):** validator operations, job moderation, refunds.
-
-**Real time.** The coordinator publishes round events over Server-Sent Events; the
-dashboard and the TUI subscribe to the same stream, so both show a new round within a
-second of it closing.
-
-**Plans sketch (to be priced after Phase 1 data)**
-
-| Plan | For | Includes |
+| Role | Can | Typical holder |
 |---|---|---|
-| Free | Trainers; requesters trying it out | Earn credits; submit jobs up to a small size on the free queue |
-| Pay-as-you-go | Most requesters | Buy credits as needed; standard priority |
-| Pro (monthly) | Teams running jobs every week | Monthly credit bundle at a discount, priority scheduling, 90-day checkpoint retention, more API tokens |
-| Enterprise | Labs | Reserved trainer pools, private datasets (Phase 4), invoicing |
+| **Owner** | Everything Admin can, plus billing and plan, SSO configuration, delete the org | Whoever deployed the server |
+| **Admin** | Fleet view of every machine (metrics, logs, pause, drain), server health, every job, users and roles, audit log, org policies | IT or ML-platform team |
+| **Operator** | Fleet and Server pages read-only plus pause and drain; no user management; cannot read other people's job artefacts | On-call engineer |
+| **Member** | Submit jobs, offer their machine, see their own jobs and machine, see aggregate network stats and the leaderboard | Every employee, every public user |
+| **Viewer** | Aggregate stats and leaderboard only | Guests, management screens |
 
-## 6. Tech stack
+Scopes: `jobs:read` `jobs:write` `trainer:read` `trainer:write` `fleet:read` `fleet:write`
+`server:read` `users:write` `billing:write`. Machine tokens created by `plasmon init` are
+limited to `trainer:*` and can only report about their own machine. Privacy default:
+Members see per-machine metrics for their own machines only; an org can switch on "open
+fleet" so everyone sees everyone, which small teams like. `plasmon whoami` prints the role; a
+command outside the role fails with a clear message ("fleet requires Operator or Admin;
+ask r.vega").
+
+### 5.3 Dashboard design
+
+One web app, one sidebar, pages gated by role. Everything that is live on a page is
+live in the CLI too (§5.4).
+
+```
+Overview      everyone      the network at a glance: machines online, jobs running, rounds/h, loss curves of active jobs
+Jobs          everyone      my jobs (Member) · all jobs (Admin): status, loss, rounds, spend, ETA, trainers per round
+My machine    everyone      the PC I am offering: live status, what it is training, usage, schedule, earnings, logs
+Fleet         Admin/Op      all machines: table, detail per machine, metrics, logs, actions
+Server        Admin/Op      coordinator health, round timings, queues, storage, DB, SSE clients, version
+Users         Admin         people, roles, machines per person, invites, SSO group mapping
+Ledger        everyone      the hash-chained log with a verify button; credits or chargeback per team (Admin)
+Settings      Owner/Admin   org policies (availability defaults, caps, retention), notifications, billing
+```
+
+Design rules: one page answers one question ("is my machine training?", "is the fleet
+healthy?", "where is my job?"); the most important number is first and large; every live
+number carries a sparkline of the last hour; every table row opens a detail page whose URL
+the CLI also prints; status colours are the same everywhere: **training** green, **idle**
+blue, **paused** yellow, **unavailable** (outside window, on battery) grey, **offline** red,
+**error** magenta.
+
+**Fleet (Admin, Operator).** The scenario is a company with 100 employee machines.
+
+```
+FLEET  acme                                   online 87 · training 31 · idle 42 · paused 9 · unavailable 5 · offline 13
+[ all teams ▾ ] [ GPU ≥ 8 GB ▾ ] [ status ▾ ]   search ____________                                  sort: GPU % ▾
+
+MACHINE       OWNER      STATUS        GPU              VRAM        GPU%  CPU%  RAM%  TEMP  JOB / ROUND                 ↑Mbps  HONESTY  SEEN
+ws-eng-037    r.vega     ● training    RTX 4090 24G     18.2/24 G   96    41    62    71°   tinyllama-es-150m  r412     12.4   0.98     2 s
+ws-eng-012    a.lopez    ● training    RTX 3080 10G      8.9/10 G   91    35    58    76°   tinyllama-es-150m  r412      6.1   0.97     3 s
+ws-des-004    m.chen     ● idle        RTX 3060 12G      0.4/12 G    2    12    30    38°   —                              —    0.95     5 s
+mbp-mkt-021   j.ortiz    ○ unavailable Apple M3 (MPS)    —           —    18    55    —     outside window 08–19          —    —        9 s
+ws-fin-009    d.kim      ● paused      RTX 4070 12G      0.2/12 G    0     8    41    35°   paused by user, 1 h           —    0.99    11 s
+ws-eng-048    s.ruiz     ✖ error       RTX 3090 24G      —           —    —     —     —     driver 535 < required 550     —    0.91     4 m
+ws-ops-002    —          offline       RTX 2080 8G       —           —    —     —     —     last seen 3 d ago             —    0.88     3 d
+… 93 more
+
+row → MACHINE DETAIL   hourly sparklines (GPU %, VRAM, CPU %, RAM %, temp, Mbps) · rounds served · tokens verified ·
+                       honesty history · versions · live log tail (last 1 000 lines, follow) · actions: pause · drain · tag · revoke
+```
+
+**Server (Admin, Operator).** Coordinator replicas and version; API p50 and p99 latency;
+per-job round timings (collect, score, aggregate, publish); scheduler queue depth;
+Postgres, Redis and storage health and usage; SSE clients connected; ledger head hash and
+last verification; recent errors. Every number on this page is also a Prometheus metric,
+and the Grafana board that ships in the deployment bundle shows the same thing.
+
+**My machine (everyone).** The page for the person who is lending their PC.
+
+```
+MY MACHINE  ws-eng-037                                                        ● training   since 19:02 (2 h 14 m)
+┌─ now ─────────────────────────────────────────┐  ┌─ schedule and limits ───────────────────────────────┐
+│ tinyllama-es-150m        round 412 of ~1 100  │  │ ■ only when idle (no input for 10 min)              │
+│ submitted by r.vega (you)                     │  │ ■ weekdays 19:00–08:00 · weekends all day            │
+│ inner step 231 / 300   ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░░░░░   │  │ □ never on battery                                   │
+│ loss 2.981  ▂▃▃▄▅▅▆▆▇▇       3.9 steps/s      │  │ GPU cap 100 %  ·  VRAM leave 2 GB  ·  upload 20 Mbps │
+│ this round  ↑ 12.4 MB   ↓ 9.8 MB               │  │ [ pause 1 h ]  [ pause until tomorrow ]  [ resume ]  │
+└───────────────────────────────────────────────┘  └─────────────────────────────────────────────────────┘
+GPU 96 % ▁▂▇▇▇▇▇▇▇▇   VRAM 18.2 / 24 GB   CPU 41 %   RAM 62 %   temp 71 °C   fan 58 %   net ↑ 12.4  ↓ 3.1 Mbps
+this session   41 rounds · 1.02 B verified tokens · +184 credits · honesty 0.98
+last 7 days    212 rounds · 5.3 B tokens · +961 credits                           [ view log ]  [ machine settings ]
+```
+
+**Jobs → job detail (the requester; Admins see all).** A large loss curve with round
+markers; status and ETA; spend so far and projected; a table of rounds with the trainers
+in each (machine, tokens, score, accepted into the top-G or not); checkpoints to download;
+logs; cancel. Which colleagues' machines trained a job is visible only when the org has
+open fleet enabled; otherwise machine names are shown hashed.
+
+**Overview (everyone).** Machines online, training and idle; jobs running; rounds per
+hour; aggregate GPU utilisation; loss curves of active jobs; top 10 of the leaderboard;
+the last ledger entry.
+
+**Notifications.** Email, Slack or webhook for: job finished or failed, machine offline
+for more than an hour, machine in error, honesty score dropped, round stalled.
+
+### 5.4 Watch mode in the CLI
+
+Every read command takes `--watch` (`-w`) and becomes a live, full-width table or panel
+fed by the coordinator's SSE stream (fallback: polling, `--interval 5s`). Columns, colours
+and role gating are the same as the web pages, so the terminal and the browser are
+interchangeable.
+
+```
+plasmon fleet [--team eng] [--status training] --watch       Admin/Operator: the Fleet table, live
+plasmon fleet show ws-eng-037 --watch                        one machine: gauges, sparklines, log tail
+plasmon fleet logs ws-eng-037 --follow [--since 1h] [--grep error]
+plasmon fleet pause | drain | resume ws-eng-037 [--for 1h]
+plasmon server status --watch                                Admin/Operator: health, round timings, queues
+plasmon job watch <id>                                       loss, rounds, trainers, spend, ETA
+plasmon jobs --all --watch                                   Admin: every job in the org
+plasmon trainer watch                                        My machine, live
+plasmon users list | invite <email> --role member | set-role <user> admin
+plasmon audit --since 24h                                    who did what, when
+```
+
+`plasmon fleet --watch` on an Admin's terminal:
+
+```
+FLEET acme   online 87  training 31  idle 42  paused 9  unavail 5  offline 13        rounds/h 14.2    ↻ 2 s    q quit
+MACHINE       OWNER     STATUS       GPU            VRAM       GPU% CPU% RAM% TEMP  JOB / ROUND               ↑Mbps  HON   SEEN
+ws-eng-037    r.vega    ● training   RTX 4090 24G   18.2/24    96   41   62   71°   tinyllama-es-150m r412    12.4   .98   2 s
+ws-eng-012    a.lopez   ● training   RTX 3080 10G    8.9/10    91   35   58   76°   tinyllama-es-150m r412     6.1   .97   3 s
+ws-des-004    m.chen    ● idle       RTX 3060 12G    0.4/12     2   12   30   38°   —                            —   .95   5 s
+mbp-mkt-021   j.ortiz   ○ unavail    M3 (MPS)        —          —   18   55    —    outside window 08–19         —    —    9 s
+ws-eng-048    s.ruiz    ✖ error      RTX 3090 24G    —          —    —    —    —    driver 535 < 550             —   .91   4 m
+```
+
+### 5.5 What machines report
+
+The `plasmon daemon` on each machine keeps one long-lived connection to the coordinator, the
+same warm connection that makes submits fast. Over it the machine sends a **heartbeat
+every 10 s** (status, current job and round, inner step, GPU %, VRAM, CPU %, RAM %,
+temperature, fan, network throughput, battery, seconds idle, versions) and **batched
+structured logs** (level-filtered; 7-day retention and a per-machine size cap by default).
+Over the same connection the coordinator sends **control messages**: pause, resume, drain
+(finish the current round, then stop), start or stop a live log stream, apply a policy,
+update the version. Machines never need an inbound port, so this works behind NAT, VPNs
+and corporate firewalls. Heartbeats are kept at 10 s resolution for 24 h and downsampled
+to 1 min for 90 days. The Fleet and My machine pages and every `--watch` view read from
+this stream. Telemetry is hardware and trainer state only: no screen, no files, no process
+list beyond the trainer's own.
+
+## 6. Running your own network (self-hosting)
+
+plasmon is open source and runs in two ways.
+
+| | Hosted (plasmon.dev) | Self-hosted (your servers) |
+|---|---|---|
+| Who runs the coordinator | plasmon | You, from the Compose bundle or the Helm chart |
+| Identity | plasmon.dev accounts | Your SSO over OIDC (Google Workspace, Okta, Entra ID, Keycloak), or local accounts with invites |
+| Who can join | Anyone | Only your people |
+| Payments | Credits bought with Stripe or USDC; trainers are paid | Off by default; optional internal credits for chargeback per team |
+| Trust model | Staked validators, Gauntlet scoring | "Trusted fleet": validators optional; scoring stays on to catch broken machines |
+| Data | Public or licensable datasets only | Private data allowed; it never leaves your perimeter |
+| Updates | Continuous | You pull releases; employee CLIs follow the version your server serves |
+
+This section is written for one scenario: a company with 100 employees and their own
+workstations and laptops. Employee 37 wants to train a model. The other 99 machines are
+online; the ones with a suitable GPU and an open availability window should train it, and
+everyone should be able to see what is happening.
+
+### 6.1 What you need
+
+- **One Linux host** for the coordinator: 4 vCPU, 16 GB RAM, 200 GB SSD to start, as a VM
+  in your cloud or a box on premises. A GPU on this host is optional; it speeds up
+  aggregation for models above roughly 1 B parameters.
+- **Docker 24+ with Compose**, or Kubernetes if you prefer the Helm chart.
+- **A DNS name** (`plasmon.acme.com`) pointing at the host. TLS is automatic through the
+  bundled Caddy (Let's Encrypt), or mount your corporate certificate.
+- **Object storage.** The bundle ships MinIO; or point it at S3, R2, GCS or Azure Blob you
+  already run. Budget about 20 GB per 1 B-parameter job for checkpoints at default
+  retention.
+- **PostgreSQL.** Bundled, or a managed instance.
+- **Optional: an OIDC application** in your identity provider (client id and secret,
+  redirect `https://plasmon.acme.com/auth/callback`), with a group for admins.
+- **Employee machines.** Anything runs the CLI. Machines with an NVIDIA GPU (8 GB VRAM or
+  more, driver 550 or newer) train. Apple Silicon machines train small jobs through MPS.
+  CPU-only machines can act as validators and blob seeders or be excluded; they do not
+  contribute meaningfully to training, and the dashboard says so instead of hiding it.
+
+### 6.2 Deploy the coordinator
+
+```bash
+# on the server
+curl -fsSL https://plasmon.dev/install.sh | sh                  # the same CLI, used here for administration
+plasmon server init \
+    --domain plasmon.acme.com \
+    --storage minio \                                           # or s3://acme-plasmon-blobs
+    --db bundled \                                              # or postgres://user:pass@host/plasmon
+    --sso oidc --oidc-issuer https://accounts.google.com \
+    --oidc-client-id ... --oidc-client-secret ... \
+    --admin-group plasmon-admins \
+    --mode private                                              # trusted fleet, payments off
+# writes ./plasmon/{docker-compose.yml, plasmon-server.yaml, Caddyfile, .env}  (.env holds generated secrets)
+cd plasmon && docker compose up -d
+plasmon server bootstrap --owner you@acme.com                   # creates the org and its Owner, prints an invite link
+plasmon server status                                           # api ✓  worker ✓  db ✓  redis ✓  storage ✓  web ✓  v0.x.y
+```
+
+The bundle starts `coordinator-api` (stateless, scale with `--scale`), `coordinator-worker`
+(scheduler, round state machine, aggregation), `postgres`, `redis`, `minio`, `web` (the
+dashboard), `caddy` (TLS and reverse proxy) and, under an optional profile, `prometheus`
+and `grafana`. Configuration lives in `plasmon-server.yaml`, secrets in `.env`. On Kubernetes,
+`helm install plasmon oci://ghcr.io/edumntg/charts/plasmon -f values.yaml` deploys the same
+components. The only open port on the server is 443 (HTTPS and HTTP/3).
+
+### 6.3 Connect the machines
+
+Each employee, or your device-management tool on their behalf:
+
+```bash
+curl -fsSL https://plasmon.acme.com/install.sh | sh             # your server serves the installer and pins the CLI version
+plasmon login --server https://plasmon.acme.com                 # device code → browser → company SSO
+plasmon trainer enable                                          # installs a user service: daemon at login, trains within policy
+plasmon trainer watch                                           # "My machine" in the terminal
+```
+
+`trainer enable` installs a systemd user unit (Linux), a launchd agent (macOS) or a
+scheduled task (Windows; training itself needs WSL2 for CUDA). It runs under the user's
+account with no admin rights and starts paused outside the availability window. For a
+silent rollout through Intune, Jamf or Ansible:
+`PLASMON_SERVER=https://plasmon.acme.com plasmon trainer enable --policy org --non-interactive`, with
+login completed by the user on first use or pre-provisioned through SSO device trust.
+
+Org policy defaults are set by an Admin in Settings; each user can tighten them, not
+loosen them:
+
+- **Availability:** only after 10 min idle; weekdays 19:00–08:00, weekends all day; never on
+  battery.
+- **Caps:** GPU 100 % when training is allowed; leave 2 GB VRAM free; upload 20 Mbit/s;
+  CPU 50 %.
+- **Behaviour:** pause within a second when the user touches keyboard or mouse; resume after
+  idle; drain at the end of the window (finish the round, then stop).
+- **Updates:** the CLI follows the version the server advertises.
+
+Machines appear in Fleet within one heartbeat of enabling. An Admin tags them once (team,
+office, GPU class); tags drive filters, scheduling and quotas.
+
+### 6.4 Walkthrough: employee 37 trains a model
+
+1. **Submit.** On their workstation, employee 37 writes `job.yaml` (model from the internal
+   registry or an upload; dataset from the internal bucket) and runs `plasmon job submit
+   job.yaml`. Validation and blake3 hashing of a multi-gigabyte dataset take a few hundred
+   milliseconds; blobs the server already has are skipped. The CLI prints the job id, the
+   estimated trainer count and the dashboard URL.
+2. **Schedule.** The coordinator selects machines that are online, inside their
+   availability window, idle, not already assigned, with a GPU that meets the job's
+   `min_vram_gb`. Say 23 of the 99 qualify at 15:00 (engineering GPUs whose owners are in
+   meetings): the job starts round 1 with 23 trainers rather than waiting for the evening.
+   If several jobs are queued, fair-share gives each user and team a slice, Admin quotas
+   adjust it, and preemption happens only at round boundaries.
+3. **Grow and shrink.** At 19:00 the window opens on the rest of the fleet; eligible
+   machines join at the next round boundary and the job grows from 23 to 60 trainers. A
+   laptop whose owner comes back pauses within a second; its partial round is simply not
+   counted and the round closes on the remaining updates.
+4. **Watch.** Employee 37 runs `plasmon job watch <id>` or opens the job page: loss per round,
+   trainers per round, ETA, spend in internal credits. Each colleague's `plasmon trainer watch`
+   or My machine page reads "training tinyllama-es-150m for r.vega, round 412". The Admin's
+   Fleet view shows 60 green rows, GPU utilisation and temperatures, and the one machine in
+   error with its driver-mismatch message.
+5. **Verify.** In private mode, scoring still runs on a sample of updates every round (on
+   the coordinator's GPU or on machines tagged `validator`), so a machine with a flaky GPU
+   that produces garbage is down-weighted and flagged in Fleet instead of silently damaging
+   the model.
+6. **Finish.** When the token budget is reached, the final checkpoint is published to the
+   internal bucket, employee 37 gets an email or Slack notification, and `plasmon job download
+   <id>` fetches `model.safetensors` plus the training report (loss curve, rounds, machines,
+   cost). The ledger holds one signed entry per round that anyone in the org can verify.
+
+### 6.5 Network, security and data
+
+- **Outbound only.** Machines open one HTTPS connection to the coordinator and move blobs
+  to and from storage over HTTPS. No inbound ports; works behind NAT, VPNs and corporate
+  proxies (`HTTPS_PROXY` is honoured). LAN blob seeding between machines (QUIC on UDP 7117)
+  is optional and off by default.
+- **Identity.** SSO over OIDC with group-to-role mapping (`plasmon-admins` → Admin); local
+  accounts with invites when there is no IdP. Every machine has its own Ed25519 key, every
+  message is signed, tokens are scoped and revocable, and the audit log records every admin
+  action.
+- **Data stays inside.** Datasets, checkpoints and updates live in your storage. The
+  coordinator makes no outbound calls except, optionally, a release check
+  (`updates.check: false` disables it). Air-gapped deployments mirror the release manifest
+  and container images to an internal registry; everything else is already internal.
+- **Trainer isolation.** The trainer runs under the employee's account without privileges.
+  Only allow-listed architectures run in v0, so no arbitrary code reaches employee
+  machines; custom model code (Phase 3) runs in a container with no network and a
+  read-only filesystem.
+- **Privacy inside the company.** Members see their own machine and aggregate stats;
+  Admins see per-machine metrics. Telemetry is hardware and trainer state only (§5.5).
+
+### 6.6 Operating it
+
+- **Backups.** Nightly `pg_dump` from a bundled cron container, plus storage versioning.
+  Restore: `docker compose down`, restore the database, `docker compose up -d`.
+- **Upgrades.** `docker compose pull && docker compose up -d`; migrations run on start.
+  Employee CLIs update to the version the server advertises.
+- **Monitoring.** `/metrics` on every component; the Grafana board mirrors the Server
+  page. Alerts ship for: coordinator down, round stalled beyond twice its expected time,
+  storage above 80 %, more than 5 % of machines in error.
+- **Scaling.** 100 machines: heartbeats are about 10 requests per second, and a round of a
+  1 B model moves about 1.5 GB of updates in and 5 GB of checkpoints out, which one host and
+  a LAN handle easily. 1 000 machines: scale `coordinator-api` to three replicas, move
+  Postgres to a managed instance, put aggregation on a GPU host. Beyond that, the Phase 3
+  multi-coordinator design (§8).
+- **Retention.** Heartbeats 90 days downsampled, logs 7 days, checkpoints the last three per
+  job plus the final one; all adjustable in `plasmon-server.yaml`.
+- **Chargeback.** Internal credits are optional. Switch them on to attribute GPU-hours and
+  tokens to teams and export a monthly CSV. Nobody is paid, but the leaderboard and the
+  "verified tokens trained" badges still work as recognition.
+
+## 7. Tech stack
 
 | Layer | Choice | Why |
 |---|---|---|
-| Trainer runtime | **Python 3.11+, PyTorch 2.x, CUDA 12.x** (bf16 autocast, `torch.compile` optional) | Where every model and every volunteer already is. CPU and Apple MPS backends supported for small jobs and for developer testing; CUDA is the first-class target |
+| Trainer runtime | **Python 3.11+, PyTorch 2.x, CUDA 12.x** (bf16 autocast, `torch.compile` optional); launched and supervised by the CLI, protocol via `plasmon_core` | Where every model and every volunteer already is. CPU and Apple MPS backends supported for small jobs and for developer testing; CUDA is the first-class target |
 | Training algorithm | **DiLoCo** inner/outer loop; reference from Prime Intellect's `OpenDiLoCo` / `prime` (Apache-2.0) | Proven at 1–100 B scale over WAN |
 | Compression | **SparseLoCo / DeMo** style top-k + low-bit + error feedback; reference code from Templar (MIT) and Nous Psyche (Apache-2.0/MIT) | 100–500× bandwidth reduction, convergence proven |
 | Tensor wire format | **safetensors** for checkpoints; custom flat binary frame (BLAKE3 hash, dtype, shape, packed indices + values) for compressed Δ | Zero-copy binary; tensors never travel as text |
@@ -442,24 +796,25 @@ second of it closing.
 | Identity / signing | **Ed25519** (PyNaCl / `cryptography`), **BLAKE3** hashing | Fast, small, standard; same as Iroh node IDs |
 | Coordinator API | **FastAPI** + **Pydantic v2** + **SQLAlchemy 2.0** on **PostgreSQL**; **Redis** for round timers and queues; **gRPC** streaming for trainer heartbeats and round events | Python keeps coordinator and trainer in one language; Postgres gives real transactions and row locks for batch assignment |
 | Blob storage | **S3-compatible** (Cloudflare R2 in production, MinIO locally); Phase 2: **Iroh** (Rust, QUIC, hole-punching, blobs + gossip) or **Hivemind** DHT for peer seeding | Start boring, add P2P where it reduces cost |
-| Validator agent | Same Python package as trainer, `cudachain validator start` | One binary, two modes |
+| Validator agent | Same Python package as trainer, `plasmon validator start` | One binary, two modes |
 | Scoring | Templar **Gauntlet**-style loss-delta scoring, **OpenSkill** ratings (`openskill` PyPI) | Deployed in production for 72 B; MIT |
 | Settlement (Phase 3) | **Solidity on Base** (OpenZeppelin, Foundry) or **Anchor on Solana**; Merkle-root payouts | Use an existing chain; both have public reference implementations in this space |
 | Sandbox (Phase 3) | **Docker** with `--gpus`, no network, read-only rootfs, seccomp; **gVisor** when available | Standard GPU isolation story |
-| CLI / TUI | **Typer** (commands) + **Rich** (colour, tables, progress, start-up animation) + **Textual** (full-screen dashboard); `pip install cudachain`; token in OS keychain via `keyring` | One install gives trainer and TUI; mature Python stack; `--json`/`--plain` for scripts |
-| SDK | `cudachain` Python package, `cudachain.Client` | Shared by CLI and user scripts |
+| CLI | **Rust**: `clap`, `ratatui` + `crossterm`, `tokio`, `reqwest` (rustls, HTTP/2, HTTP/3), `ed25519-dalek`, `blake3`, `keyring`, `tachyonfx`; one static binary per platform; `plasmon daemon` mode keeps a warm connection | 3 ms start-up measured; dependency-free install; same language as Iroh and blake3 |
+| Protocol core | Rust crate **`plasmon-core`**: identity, signatures, content addressing, Δ frame format, blob client, API types; exposed to Python as **`plasmon_core`** via PyO3 / maturin | One implementation of the wire protocol shared by CLI, daemon and trainer |
+| SDK | Python package `plasmon` (`plasmon.Client`) on top of `plasmon_core`; TypeScript SDK for the web later | Shared by CLI-launched trainer and user scripts |
 | Web dashboard | **Next.js** (React, TypeScript) + **Tailwind** + **shadcn/ui**; charts with **Recharts**; live updates over **SSE**; deployed on Vercel or beside the coordinator | Standard, fast to build, good charting; the API stays in Python |
-| Accounts and auth | Coordinator owns accounts: email + password / magic link, GitHub and Google OAuth (**authlib**), device-code flow for the CLI, scoped API tokens, passkeys later | One identity for CLI and web; no third-party auth lock-in |
+| Accounts and auth | Coordinator owns accounts: email + password / magic link, GitHub and Google OAuth, **OIDC SSO with group→role mapping** for self-hosted orgs (**authlib**), device-code flow for the CLI, scoped API tokens, RBAC (Owner / Admin / Operator / Member / Viewer), audit log, passkeys later | One identity for CLI and web; companies bring their own IdP |
 | Payments | **Stripe** (cards, subscriptions for plans, Connect for fiat payouts later); **USDC** via Coinbase Commerce in Phase 2, direct on-chain in Phase 3 | Credits are the unit; fiat and crypto are just on-ramps |
-| Packaging / ops | `pyproject.toml` (uv/hatch), Docker images for coordinator and trainer, `docker compose` dev stack, GitHub Actions, **pytest** with a two-trainer in-process integration test | Testable from day one |
+| Packaging / ops | Cargo workspace + `pyproject.toml` (uv/maturin), signed release manifests + `install.sh`, Docker images for coordinator and trainer, `docker compose` dev stack, GitHub Actions with a `hyperfine` start-up budget check, **pytest** two-trainer integration test | Testable from day one |
 | Observability | Structured logs (structlog), Prometheus metrics, Grafana dashboard: loss per round, trainers online, bytes per round, score distribution | Trainers need a public leaderboard and requesters need a loss curve |
+| Fleet telemetry | 10 s heartbeats and batched logs over the daemon's long-lived connection; GPU via NVML (`nvml-wrapper`), CPU/RAM/battery/idle via `sysinfo` in the Rust daemon; stored in Postgres (10 s for 24 h, 1 min for 90 d, TimescaleDB optional); fan-out to web and CLI over SSE | Powers Fleet, My machine and every `--watch` view |
+| Self-hosting bundle | `plasmon server init` → Docker Compose (api, worker, Postgres, Redis, MinIO, web, Caddy auto-TLS, Prometheus/Grafana profile) or Helm chart; org policies (availability windows, caps, idle detection); `plasmon trainer enable` installs systemd / launchd / scheduled-task services | One-command private deployment (§6) |
 
-Deliberately **not** in the stack: a new blockchain, a new P2P protocol, JSON tensors,
-C++ (until there is a measured hot path that PyTorch does not cover), raw CUDA kernels in
-v1. The name refers to the hardware the network runs on and to the hash-chained ledger;
-users never write kernels.
+Deliberately **not** in the stack: a new blockchain, a new P2P protocol, JSON tensors, an
+interpreted or runtime-bundled CLI, raw CUDA kernels in v1.
 
-## 7. Is it a server or a blockchain?
+## 8. Is it a server or a blockchain?
 
 Both questions people ask, answered directly.
 
@@ -473,7 +828,7 @@ validators each run a coordinator replica and sign the round result; the client 
 round only when a quorum agrees. That is a small permissioned BFT set, not a public chain.
 
 **Is it a blockchain?** Not in the sense of a new consensus network with its own token.
-The *chain* in cuda-chain refers to (a) the hash-chained ledger of rounds, scores and
+The *chain* in plasmon refers to (a) the hash-chained ledger of rounds, scores and
 payouts, and (b) settlement of value on an existing public chain once there is value to
 settle. This is the same shape as Psyche (coordinator = Solana program), Templar
 (coordinator = validator set + Bittensor for emissions) and Prime Intellect (Rust
@@ -485,7 +840,11 @@ progressively: Phase 1 trusts the project's coordinator (while making its behavi
 auditable); Phase 3 trusts a quorum of staked validators; the design never requires
 trusting trainers.
 
-## 8. Going live: from laptop to first users
+## 9. Going live: from laptop to first users
+
+Two ways to run plasmon: hosted at plasmon.dev, or self-hosted inside a company (§6). The phases
+below are the public network's path. A company can self-host from milestone M3 (§12)
+onward; the Compose bundle the alpha runs on is the same one companies deploy.
 
 ### Phase 0: it works on one machine (target: 6–8 weeks of work)
 
@@ -513,8 +872,8 @@ an artefact (open weights) that proves the network works.
 - **Reference run:** a 150 M Llama-style model on 3–5 B tokens of FineWeb-Edu, DiLoCo
   H=300, bf16, 2 % top-k 2-bit. On 20 consumer GPUs this takes about one to two weeks.
   Publish loss curve and leaderboard live.
-- **Trainer onboarding:** sign up on the dashboard, then `pip install cudachain && cudachain login && cudachain trainer start --join <run>`
-  or `docker run cudachain/trainer`. Minimum: NVIDIA GPU with ≥ 8 GB VRAM (RTX 3060 /
+- **Trainer onboarding:** sign up on the dashboard, then `curl -fsSL https://plasmon.dev/install.sh | sh && plasmon login && plasmon trainer start --join <run>`
+  or `docker run plasmon/trainer`. Minimum: NVIDIA GPU with ≥ 8 GB VRAM (RTX 3060 /
   3070 / 4060 Ti and up), Linux or WSL2, 20 Mbit/s upload, driver ≥ 535. Invite codes via
   Discord/GitHub; 10–50 people.
 - **Verification:** validators run by the project only (2–3 GPUs), full Gauntlet scoring
@@ -547,7 +906,7 @@ an artefact (open weights) that proves the network works.
   trainer and validator bonds, slashing.
 - Coordinator replicated across validators; round results accepted on quorum signature.
 - Custom model code in sandboxed containers; RL post-training jobs with TOPLOC-style
-  rollout verification (the cheapest verifiable workload, see Prime Intellect in §9).
+  rollout verification (the cheapest verifiable workload, see Prime Intellect in §10).
 
 ### Phase 4: scale
 
@@ -557,7 +916,7 @@ an artefact (open weights) that proves the network works.
 - Governance of parameters and fees; token only if it is needed for something credits
   cannot do.
 
-## 9. Prior art and competitors
+## 10. Prior art and competitors
 
 Full research notes with sources are in [`docs/LANDSCAPE.md`](docs/LANDSCAPE.md). Summary
 as of October 2026:
@@ -575,7 +934,7 @@ as of October 2026:
 | **Akash, io.net, Render, Golem, Vast.ai, Salad** | GPU *rental* marketplaces | None (you bring your own orchestration) | n/a | Token or fiat per GPU-hour | Large (io.net ~370 k GPUs claimed) | Varies |
 | **Together AI, Exo** | Together: started from decentralized-training research, now a centralized neocloud ($8.3 B). Exo: LAN clusters for inference | | | | | |
 
-**What this tells cuda-chain**
+**What this tells plasmon**
 
 1. The algorithmic stack is settled and open: DiLoCo + sparse/low-bit pseudo-gradients. Use
    the reference implementations, do not reinvent.
@@ -587,62 +946,71 @@ as of October 2026:
    is the open space and the differentiator, together with transparent, recomputable
    scoring (the exact thing the Covenant/Bittensor split was about).
 4. Economics are unproven at the frontier: the best-funded teams train flagships on
-   InfiniBand clusters. cuda-chain targets the long tail (fine-tunes, ≤ 10 B pre-training,
+   InfiniBand clusters. plasmon targets the long tail (fine-tunes, ≤ 10 B pre-training,
    RL rollouts), where volunteer compute is already competitive.
 5. Verification is the hard, unsolved problem. Ship statistical verification and publish
    detection rates rather than promising cryptographic proofs.
 
-## 10. Repository layout
+## 11. Repository layout
 
-One Python monorepo plus the web app:
+One repository: a Rust workspace for the CLI and protocol core, a Python package for the trainer, the coordinator and the web app.
 
 ```
-cudachain/
-├── pyproject.toml
-├── docker-compose.yml            # postgres, redis, minio, coordinator, 2× trainer
-├── src/cudachain/
-│   ├── cli/                      # typer: login | job | trainer | validator | net | credits | ledger
-│   ├── tui/                      # rich + textual: logo animation, home screen, live panels, dashboard
-│   ├── proto/                    # signed message schemas (pydantic) + gRPC defs
-│   ├── crypto/                   # ed25519 identity, blake3 content addressing
-│   ├── blobs/                    # s3 client, content-addressed cache, (phase 2) iroh/hivemind
-│   ├── data/                     # webdataset sharding, deterministic assignment
-│   ├── train/                    # diloco inner/outer loop, compression (sparseloco/demo), frames
-│   ├── trainer/                  # agent: enrol, pull, train, commit-reveal, upload
-│   ├── validator/                # agent: cheap checks, gauntlet scoring, re-execution
-│   ├── coordinator/              # fastapi app, round state machine, aggregation, ledger
-│   └── models/                   # allow-listed architectures (llama, gpt2, resnet, lora)
+plasmon/
+├── Cargo.toml                    # rust workspace
+├── crates/
+│   ├── plasmon-core/                 # identity (ed25519), blake3 content addressing, Δ frames, blob client, API types
+│   ├── plasmon-cli/                  # `plasmon` binary: clap commands, ratatui TUI, daemon mode, self-update
+│   └── plasmon-py/                   # PyO3 bindings -> python extension `plasmon_core` (maturin)
+├── python/
+│   └── plasmon/                      # trainer, validator, SDK (PyTorch); imports plasmon_core
+│       ├── train/                # diloco inner/outer loop, sparseloco/demo compression
+│       ├── trainer/              # agent: enrol, pull, train, commit-reveal, upload
+│       ├── validator/            # agent: cheap checks, gauntlet scoring, re-execution
+│       ├── data/                 # webdataset sharding, deterministic assignment
+│       └── models/               # allow-listed architectures (llama, gpt2, resnet, lora)
+├── coordinator/                  # fastapi: accounts, jobs, round state machine, aggregation, ledger, SSE
 ├── web/                          # next.js dashboard: public pages, account, credits, jobs, trainers
 ├── contracts/                    # phase 3: foundry project (escrow, payouts, bonds)
-├── tests/                        # unit + two-trainer integration test
+├── install/                      # install.sh, release manifests, homebrew formula
+├── docker-compose.yml            # postgres, redis, minio, coordinator, 2× trainer
+├── tests/                        # two-trainer integration test, CLI end-to-end, start-up budget
 └── docs/
     ├── LANDSCAPE.md              # competitor and research notes with sources
     └── PROTOCOL.md               # (to write) message formats and round state machine
 ```
 
-## 11. Roadmap
+## 12. Roadmap
 
-- [ ] **M0 Scaffold.** `pyproject`, identity, signed messages, blob client, compose stack, CI.
-      CLI skeleton with the start-up animation, `login` (device code), `whoami`, `--json`.
+- [ ] **M0 Scaffold.** Cargo workspace and `pyproject`; `plasmon-core` identity and signed
+      messages; blob client; compose stack; CI with the `hyperfine` start-up budget. CLI
+      skeleton: `install.sh`, `--version` under 5 ms, start-up animation, `login` (device
+      code), `whoami`, `--json`.
 - [ ] **M1 DiLoCo locally.** Inner/outer loop, SparseLoCo compression, binary Δ frames,
       two in-process trainers reach single-GPU loss on a 10–30 M model. Traffic measured.
 - [ ] **M2 Coordinator.** Job spec, round state machine, deterministic assignment,
-      commit-reveal, aggregation, hash-chained ledger, join/leave mid-run. Accounts and
-      API tokens. CLI `job`, `trainer`, `net` commands with live Rich panels.
-- [ ] **M3 Verification.** Gauntlet scoring, OpenSkill ratings, top-G selection, seeded
+      commit-reveal, aggregation, hash-chained ledger, join/leave mid-run. Accounts, roles
+      and API tokens. CLI `job`, `trainer`, `net` commands with live ratatui panels;
+      `plasmon daemon` warm connection; content-addressed dedupe on submit; heartbeats.
+- [ ] **M3 Fleet and self-hosting.** `plasmon server init` Compose bundle with Caddy TLS, OIDC
+      with group→role mapping, org policies (availability windows, caps, idle detection),
+      `plasmon trainer enable` services for Linux, macOS and Windows, log shipping and live log
+      streams, control messages (pause, drain), `plasmon fleet` / `server` / `users` / `audit`
+      with `--watch`. First private deployment on a real office fleet.
+- [ ] **M4 Verification.** Gauntlet scoring, OpenSkill ratings, top-G selection, seeded
       cheating tests (random Δ, copied Δ, wrong shard) all detected.
-- [ ] **M4 Alpha run.** VPS + R2, 150 M reference model, 10–50 invited trainers. Web
-      dashboard v1: sign-up, network status, job explorer, leaderboard, my trainers.
-      Textual full-screen TUI. (Phase 1 above.)
-- [ ] **M5 Paid jobs.** Credits and plans in the dashboard (Stripe, USDC in; USDC out),
+- [ ] **M5 Alpha run.** VPS + R2, 150 M reference model, 10–50 invited trainers. Web
+      dashboard v1: Overview, Jobs, My machine, Fleet, Server, Users, Ledger; sign-up and
+      leaderboard. Full-screen `plasmon dashboard` TUI. (Phase 1 above.)
+- [ ] **M6 Paid jobs.** Credits and plans in the dashboard (Stripe, USDC in; USDC out),
       job submission form, history and invoices, allow-listed fine-tune/LoRA jobs,
       community validators with bonds, P2P seeding. (Phase 2.)
-- [ ] **M6 Contracts and quorum coordinator.** (Phase 3.)
-- [ ] **M7 Pipeline parallelism, async rounds, custom code sandbox.** (Phase 4.)
+- [ ] **M7 Contracts and quorum coordinator.** (Phase 3.)
+- [ ] **M8 Pipeline parallelism, async rounds, custom code sandbox.** (Phase 4.)
 
-## 12. Contributing and license
+## 13. Contributing and license
 
-Work happens on `main` under the layout in §10, starting with M0. Issues are welcome,
+Work happens on `main` under the layout in §11, starting with M0. Issues are welcome,
 especially from people with a consumer GPU who want to be alpha trainers, and from anyone
 who has run DiLoCo, Hivemind, Psyche or Templar nodes.
 

@@ -71,11 +71,57 @@ class State:
         return f"http://{lan_ip()}:{self.cfg.port}"
 
 
+# Interfaces that are not the local network: loopback, VPN tunnels, VM and container
+# adapters, Apple's peer-to-peer links. A corporate VPN often routes 10.0.0.0/8, which
+# made the old "route to 10.255.255.255" trick return the tunnel address.
+_SKIP_PREFIXES = ("lo", "utun", "tun", "tap", "awdl", "llw", "bridge", "vmnet", "vnic", "docker", "veth", "br-", "gif", "stf", "anpi", "ap", "ppp", "ipsec", "zt", "ts", "wg", "tailscale", "virbr", "vboxnet", "cni", "flannel")
+_PREFER_PREFIXES = ("en0", "en1", "eth", "wlan", "wlp", "enp", "eno", "wi-fi", "ethernet", "en")
+
+
+def lan_candidates() -> list[tuple[str, str]]:
+    """(interface, IPv4) pairs that can be the Wi-Fi or wired address, best first."""
+    try:
+        import psutil
+
+        addrs = psutil.net_if_addrs()
+    except Exception:
+        return []
+    out: list[tuple[str, str]] = []
+    for name, entries in addrs.items():
+        lname = name.lower()
+        if lname.startswith(_SKIP_PREFIXES):
+            continue
+        for e in entries:
+            if e.family != socket.AF_INET:
+                continue
+            ip = e.address
+            if ip.startswith(("127.", "169.254.", "0.")):
+                continue
+            out.append((name, ip))
+
+    def rank(item: tuple[str, str]) -> tuple[int, int, str]:
+        name, ip = item
+        lname = name.lower()
+        pref = next((i for i, p in enumerate(_PREFER_PREFIXES) if lname.startswith(p)), len(_PREFER_PREFIXES))
+        private = 0 if ip.startswith("192.168.") else 1 if ip.startswith("10.") else 2 if _is_172_private(ip) else 3
+        return (pref, private, name)
+
+    return sorted(out, key=rank)
+
+
+def _is_172_private(ip: str) -> bool:
+    parts = ip.split(".")
+    return parts[0] == "172" and 16 <= int(parts[1]) <= 31
+
+
 def lan_ip() -> str:
-    """Best-effort LAN address, used in the device-code prompt and in `server start` output."""
+    """Best guess of the address other computers on the network can reach."""
+    candidates = lan_candidates()
+    if candidates:
+        return candidates[0][1]
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
-            s.connect(("10.255.255.255", 1))
+            s.connect(("192.168.255.255", 1))
             return s.getsockname()[0]
     except OSError:
         return "127.0.0.1"

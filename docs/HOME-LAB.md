@@ -40,6 +40,12 @@ python3 -m plasmon --version
 
 Both print `plasmon 0.1.0`.
 
+To update the engine later, when the repository has changed:
+
+```bash
+python3 -m pip install --force-reinstall --no-deps "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
+```
+
 ### A2. Start the coordinator
 
 ```bash
@@ -61,8 +67,8 @@ incoming network connections?", select **Allow**.
 
 ### A3. Create the owner account
 
-Open `http://192.168.1.20:7117` in a browser. Select **Create account**. The first account
-becomes the owner.
+On the Mac, open `http://localhost:7117` in a browser. Select **Create account**. The
+first account becomes the owner.
 
 ### A4. Log in from Terminal
 
@@ -271,6 +277,7 @@ the two runs on the **Jobs** page.
 |---|---|---|
 | `plasmon: command not found` after the install | The install directory is not on the PATH yet | Open a new terminal window. The installer prints the PATH line to add if needed. |
 | `the plasmon Python package was not found` | The engine is not installed for the Python the CLI found | Run the `pip install` line again. Set `PLASMON_PYTHON` to the right interpreter if you have several. |
+| The browser says "didn't send any data" or `ERR_EMPTY_RESPONSE` on an address like `172.16.30.1` | That address is a VPN tunnel or a virtual machine adapter, not the Wi-Fi | On the Mac use `http://localhost:7117`. From the PC use the `en0` address (`ipconfig getifaddr en0`). With a corporate VPN, the PC may need the VPN off, or the Mac's Wi-Fi address published with `--public-url`. |
 | `cannot reach http://192.168.1.20:7117` on the PC | Firewall on the Mac, or a different network | On the Mac, System Settings, Network, Firewall: allow Python. Make sure both computers use the same Wi-Fi. |
 | The trainer prints `heartbeat failed: 401` | The machine token was revoked | The trainer re-enrols by itself. If it does not, run `plasmon login` again. |
 | The job stays at round 0 | No trainer is idle, or the trainers cannot reach the server | `plasmon fleet`: each machine must show `idle` or `training`. |

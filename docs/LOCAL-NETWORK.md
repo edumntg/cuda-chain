@@ -77,14 +77,21 @@ plasmon server init --org home
 plasmon server start
 ```
 
-The server prints its dashboard address:
+The server prints its addresses:
 
 ```
 plasmon coordinator
-  dashboard  http://192.168.1.20:7117
-  api        http://192.168.1.20:7117/api/docs
-  data       /Users/you/Library/Application Support/plasmon/server
+  on this computer   http://localhost:7117
+  from the network   http://192.168.1.20:7117   (best guess, see below)
+  api                http://192.168.1.20:7117/api/docs
+  data               /Users/you/Library/Application Support/plasmon/server
 ```
+
+When the computer has several addresses, the server lists them with their interface
+names. Participants use the Wi-Fi or wired one (`en0` on a Mac, `eth0` or `wlan0` on
+Linux, "Wi-Fi" on Windows). Addresses on `utun`, `tun`, `vmnet`, `bridge` or `docker`
+interfaces belong to a VPN or to virtual machines and do not answer. Publish the right one
+with `plasmon server init --public-url http://192.168.1.20:7117`.
 
 Keep this terminal open. Stop the server with `Ctrl+C`; it keeps all data and continues
 at the next `server start`.
@@ -204,6 +211,7 @@ Expected: an accuracy between 96 % and 98 % on the 10,000 MNIST test images.
 
 | Problem | Check | Solution |
 |---|---|---|
+| The browser says "didn't send any data" or `ERR_EMPTY_RESPONSE` | Is the address on a `utun`, `vmnet` or `bridge` interface? | Use `http://localhost:7117` on the server itself and the Wi-Fi address from participants. A VPN on the server or the participant can also swallow local traffic; pause it to test. |
 | `cannot reach http://192.168.1.20:7117` | On the participant: `curl http://192.168.1.20:7117/v1/healthz` | Both computers on the same network? Firewall on the server allows Python or port 7117? Address correct and unchanged? |
 | The browser cannot open the dashboard from a participant, but the server can | Same as above | The server's firewall. Allow Python (macOS, Windows) or port 7117 (Linux). |
 | The participant shows `offline` on the dashboard | Is `trainer start` still running? | Start it again, or install it as a service. |

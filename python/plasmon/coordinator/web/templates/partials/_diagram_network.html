@@ -1,14 +1,11 @@
 <div class="legend" aria-hidden="true">
   <span class="l-training"><i></i>training, data moving</span>
-  <span class="l-control"><i></i>job ↔ coordinator</span>
-  <span class="dashed"><i></i>idle or waiting</span>
-  <span class="l-paused dashed"><i></i>paused</span>
-  <span class="l-offline dashed"><i></i>offline</span>
+  <span class="l-control"><i></i>job without an active trainer</span>
+  <span><i></i>available</span>
+  <span class="l-offline dashed"><i></i>offline or error</span>
 </div>
 <div class="diagram is-loading" data-diagram="network" data-org="{{ org }}" aria-busy="true">
-  <div class="skeleton" style="left: calc(50% - 84px); top: 12px; width: 168px; height: 72px;"></div>
-  <div class="skeleton" style="left: 12%; top: 170px; width: 168px; height: 72px;"></div>
-  <div class="skeleton" style="left: calc(50% - 84px); top: 170px; width: 168px; height: 72px;"></div>
-  <div class="skeleton" style="right: 12%; top: 170px; width: 168px; height: 72px;"></div>
-  <div style="height: 260px;"></div>
+  <div class="skeleton" style="left: calc(50% - 100px); top: 18px; width: 200px; height: 74px;"></div>
+  <div class="skeleton" style="left: calc(50% - 170px); top: 128px; width: 340px; height: 96px;"></div>
+  <div class="skeleton-space" style="height: 300px;"></div>
 </div>

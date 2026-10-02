@@ -61,17 +61,30 @@ Dial: ENERGY 2 / RHYTHM 2 / MOTION 2.
 
 ## Diagrams
 
-- Network diagram (overview, fleet): coordinator on top, running jobs in the middle,
-  machines below in rows of six. A machine's path goes to the job it trains, otherwise to
-  the coordinator. Node border, port dot and path take the status colour. Marching ants
-  only on paths that carry data. Click a node to open its page.
-- Job diagram (job page): shards, the trainers of the current round, the aggregation step
-  and the resulting weights, left to right. Each trainer's edge shows its state in the
-  round: assigned (dashed grey), committed (yellow), revealed (green, moving), accepted or
-  rejected after the close.
-- Diagrams are SVG drawn by `diagram.js` from the JSON API and updated in place every
-  three seconds, so animations do not restart on refresh. They render a skeleton first and
-  an error line when the API is unreachable.
+- Structure follows the PlanetScale cluster view at the owner's request: compact HTML
+  nodes (12 px text, 96 px minimum width) with a header strip, a body with an icon and two
+  lines, and a monospaced footer (`CPU: 41%`); 8 px port dots; group boxes with two stacked
+  translucent borders behind them and a status pill that overlaps the bottom border; 1 px
+  wires drawn as SVG paths measured from the DOM, with marching ants on the wires that
+  carry data. Colours, icons and copy are plasmon's.
+- Wires follow a trunk-and-bus scheme so that no two colours share a segment: one trunk
+  from the coordinator down to a horizontal bus, one drop per group, and for a group in a
+  later row a corridor that hugs the boxes above or passes through a gap between them.
+  Inside a group the same scheme repeats at a smaller scale. The trunk and the bus turn
+  green and move while any machine trains; a drop takes the colour of what it reaches.
+- Network diagram (overview, fleet): the coordinator on top (header "Coordinator", the org
+  name with a count of machines online, one small square per machine coloured by status,
+  footer with the scheduler state and rounds per hour); below it one group per running
+  job holding the machines that train it (pill: job name ・ round r/N), a group of
+  available machines and a group of offline or error machines. Icons: Apple, Windows,
+  Linux, generic PC, GPU chip for CUDA machines, a server for the coordinator.
+- Job diagram (job page): data → trainers of the current round (a vertical group) →
+  aggregation → weights, left to right. Each trainer's wire shows its state in the round:
+  assigned (dashed grey), committed (yellow, moving), revealed (green, moving), accepted
+  (green), rejected or expired (red dashed).
+- `diagram.js` draws from the JSON API and reconciles nodes by id every three seconds,
+  so animations do not restart. It renders a skeleton first and an error line when the
+  API is unreachable. Wires are redrawn on resize.
 
 ## Focal points
 

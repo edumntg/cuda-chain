@@ -142,7 +142,12 @@ class ServerConfig(BaseModel):
         return Path(self.data_dir or data_dir() / "server")
 
     def resolved_db_url(self) -> str:
-        return self.db_url or f"sqlite:///{self.resolved_data_dir() / 'plasmon.sqlite3'}"
+        url = self.db_url or f"sqlite:///{self.resolved_data_dir() / 'plasmon.sqlite3'}"
+        # Hosted databases hand out postgres:// URLs; SQLAlchemy needs the psycopg driver named.
+        for prefix in ("postgres://", "postgresql://"):
+            if url.startswith(prefix):
+                url = "postgresql+psycopg://" + url[len(prefix):]
+        return url
 
     def resolved_blob_path(self) -> Path:
         return Path(self.blobs.path or self.resolved_data_dir() / "blobs")
@@ -164,7 +169,7 @@ def load(path: Path | None = None) -> ServerConfig:
     cfg = ServerConfig.model_validate(data)
     if url := os.environ.get("PLASMON_DB_URL"):
         cfg.db_url = url
-    if port := os.environ.get("PLASMON_PORT"):
+    if port := os.environ.get("PLASMON_PORT") or os.environ.get("PORT"):  # PORT: Railway, Render, Fly
         cfg.port = int(port)
     if host := os.environ.get("PLASMON_HOST"):
         cfg.host = host
@@ -174,6 +179,8 @@ def load(path: Path | None = None) -> ServerConfig:
         cfg.public_url = url
     if secret := os.environ.get("PLASMON_SESSION_SECRET"):
         cfg.auth.session_secret = secret
+    if reg := os.environ.get("PLASMON_OPEN_REGISTRATION"):
+        cfg.auth.open_registration = reg.lower() not in ("0", "false", "no")
     if (key := os.environ.get("PLASMON_S3_ACCESS_KEY")) and (sec := os.environ.get("PLASMON_S3_SECRET_KEY")):
         cfg.blobs.access_key, cfg.blobs.secret_key = key, sec
     if secret := os.environ.get("PLASMON_OIDC_CLIENT_SECRET"):

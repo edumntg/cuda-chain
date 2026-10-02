@@ -187,6 +187,7 @@ budget: {{rounds: 2}}
         assert web.get(f"/jobs/{job['id']}/download?blob={'0' * 64}").status_code == 404
         overview = web.get("/")
         assert 'data-diagram="network"' in overview.text and "machines online" in overview.text
+        assert 'id="i-apple"' in overview.text and 'id="i-windows"' in overview.text  # icon sprite for the diagrams
         assert web.get("/fleet").status_code in (200, 403)
         assert web.get("/static/diagram.js").status_code == 200
         assert web.get(f"/machine/{agent.identity.node_id}").status_code == 200

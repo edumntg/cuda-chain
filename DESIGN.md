@@ -98,3 +98,22 @@ Dial: ENERGY 2 / RHYTHM 2 / MOTION 2.
 
 Short, factual labels in sentence case. No marketing words. Buttons name the action
 ("Download latest weights", "Cancel job", "Confirm code", "Switch theme").
+
+## Terminal
+
+- The CLI uses the terminal's own 16 colours, never fixed RGB, so the views read on light
+  and dark themes and follow the user's palette. Cyan is the brand accent (the wave, the
+  active tab, titles); green, blue, yellow, grey, red and magenta are the status scale, the
+  same as the web dashboard.
+- Start-up sequence (about 0.9 s, any key skips): scattered dots lock into a travelling
+  wave, the wordmark resolves out of noise left to right (░ ▒ ▓ then the glyph), then the
+  tagline and the version. It plays on the bare `plasmon`, on `plasmon dashboard` and once,
+  inline, before `plasmon trainer start` hands over to the trainer log. Off when stdout is
+  not a TTY, with `--plain`, or under `NO_COLOR`, `PLASMON_NO_ANIM`, `TERM=dumb`.
+- Dashboard: one header line (mark, tabs, user and server), a rule, the body, one footer
+  line (key hints left, refresh cadence right, the last error in red). Cards use rounded
+  borders with a muted title; sections use a top rule with a bold title. Status is always
+  a coloured dot plus the word. Load is a five-cell bar coloured green, yellow or red by
+  level, followed by the number. A selected row is reversed as one block.
+- The same screens serve `job watch`, `fleet --watch`, `fleet show --watch` and
+  `server status --watch`, locked to one view.

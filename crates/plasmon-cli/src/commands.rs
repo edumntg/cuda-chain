@@ -5,7 +5,6 @@ use crate::api::Api;
 use crate::paths::{self, Credentials};
 use anyhow::{bail, Context, Result};
 use serde_json::Value;
-use std::io::Write;
 use std::time::{Duration, Instant};
 
 pub fn api(server_override: Option<&str>) -> Result<Api> {
@@ -37,8 +36,16 @@ pub fn login(server: &str, no_browser: bool, json: bool) -> Result<()> {
         .unwrap_or("")
         .to_string();
     let code = start["user_code"].as_str().unwrap_or("").to_string();
+    let styled = crate::tui::animation_enabled();
+    let (b, d, r) = if styled {
+        ("\x1b[1m", "\x1b[2m", "\x1b[0m")
+    } else {
+        ("", "", "")
+    };
     eprintln!(
-        "Open this address in a browser and confirm the code.\n\n  {url}\n\n  code: {code}\n"
+        "{b}{} plasmon{r} {d}· log in to {server}{r}\n\n  Open this address in a browser and confirm the code:\n  {}\n\n  code  {b}{code}{r}\n",
+        crate::tui::MARK,
+        crate::tui::link(&url)
     );
     if !no_browser {
         let _ = open::that(&url);
@@ -47,18 +54,21 @@ pub fn login(server: &str, no_browser: bool, json: bool) -> Result<()> {
     let deadline =
         Instant::now() + Duration::from_secs(start["expires_in"].as_u64().unwrap_or(600));
     let device_code = start["device_code"].clone();
+    let mut spinner = crate::tui::Spinner::new("waiting for the confirmation in the browser");
     while Instant::now() < deadline {
+        spinner.tick();
         std::thread::sleep(interval);
         let reply = api.post(
             "/v1/auth/device/token",
             &serde_json::json!({"device_code": device_code}),
         )?;
         if reply.get("status").and_then(Value::as_str) == Some("pending") {
-            eprint!(".");
-            let _ = std::io::stderr().flush();
             continue;
         }
-        eprintln!();
+        spinner.done(&format!(
+            "confirmed as {}",
+            reply["user"]["email"].as_str().unwrap_or("")
+        ));
         let creds = Credentials {
             server: server.trim_end_matches('/').to_string(),
             user: reply["user"]["email"].as_str().unwrap_or("").to_string(),

@@ -397,34 +397,54 @@ of the trainer, where PyTorch is.
    command, runs concurrently with the status fetch, is skipped by any key, and is off when
    stdout is not a TTY or `NO_COLOR` / `PLASMON_NO_ANIM` is set.
 
-**Start-up screen.** Running `plasmon` with no arguments in a TTY plays a short animation
-(≈ 1 s, skippable): a field of scattered dots jitters at random, then locks into a single
-travelling wave that fills in the wordmark with a colour sweep, then a one-screen status
-appears: who you are, credits, trainers online, your active jobs and
-the latest round of each. The frames live in `plasmon-cli/src/tui/logo.rs` as string
-literals so they are easy to redraw.
+**Start-up screen.** Running `plasmon` with no arguments in a TTY plays a short sequence
+(about 0.9 s, any key skips it): a line of scattered dots locks into a travelling wave while
+the wordmark resolves out of noise from left to right. Then the dashboard opens: five tabs
+(overview, jobs, fleet, my machines, server), cards for machines online with a status bar,
+jobs running, the scheduler and anything that needs attention, tables with status chips and
+load bars, a loss chart per job, and a key-hint footer. `plasmon trainer start` prints the
+same wordmark once and then hands the terminal to the trainer log. The sequence is off when
+stdout is not a TTY, with `--plain`, or when `NO_COLOR`, `PLASMON_NO_ANIM` or `TERM=dumb`
+is set. Colours come from the terminal's own palette, so every view reads on a light or a
+dark theme.
 
 ```
-  ██████╗ ██╗      █████╗ ███████╗███╗   ███╗ ██████╗ ███╗   ██╗
-  ██╔══██╗██║     ██╔══██╗██╔════╝████╗ ████║██╔═══██╗████╗  ██║      ~
-  ██████╔╝██║     ███████║███████╗██╔████╔██║██║   ██║██╔██╗ ██║
-  ██╔═══╝ ██║     ██╔══██║╚════██║██║╚██╔╝██║██║   ██║██║╚██╗██║      thousands of GPUs, one wave
-  ██║     ███████╗██║  ██║███████║██║ ╚═╝ ██║╚██████╔╝██║ ╚████║
-  ╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
-  ◆ eduardo        ◆ 1,240 credits        ◆ 37 trainers online        ◆ v0.1.0
+    ●●●●●●●●                        ●●●●●●●●                        ●●●●●●●●
+  ●●        ●●                    ●●        ●●                    ●●        ●●
+●●            ●●●●            ●●●●            ●●●●            ●●●●            ●●
+                  ●●●●●●●●●●●●                    ●●●●●●●●●●●●
+            ██████╗ ██╗      █████╗ ███████╗███╗   ███╗ ██████╗ ███╗   ██╗
+            ██╔══██╗██║     ██╔══██╗██╔════╝████╗ ████║██╔═══██╗████╗  ██║
+            ██████╔╝██║     ███████║███████╗██╔████╔██║██║   ██║██╔██╗ ██║
+            ██╔═══╝ ██║     ██╔══██║╚════██║██║╚██╔╝██║██║   ██║██║╚██╗██║
+            ██║     ███████╗██║  ██║███████║██║ ╚═╝ ██║╚██████╔╝██║ ╚████║
+            ╚═╝     ╚══════╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═══╝
+                              thousands of GPUs, one wave
+                              v0.1.0 · http://192.168.1.20:7117
 
-  JOB                    STATE     ROUND   LOSS     TRAINERS   SPENT
-  tinyllama-es-150m      running   412     2.981    19         1,114 cr   ▂▃▃▄▅▅▆▆▇▇
-  resnet50-cifar-ft      done      120     0.412    8          210 cr     ▁▂▄▆▇▇▇███
+ ∿ plasmon   1 overview   2 jobs   3 fleet   4 my machines   5 server          eduardo@home (owner)
+──────────────────────────────────────────────────────────────────────────────────────────────────
+╭ machines online ───────────╮╭ jobs running ──────────────╮╭ scheduler ─────────╮╭ attention ─────╮
+│ 7 / 8  3 training · 1 idle ││ 1   0 completed            ││ running            ││ 2              │
+│ ██████████▓▓▓▒▒▒░░░        ││ 4 rounds in the last hour  ││ up 21 min          ││ error 1 · offline 1
+╰────────────────────────────╯╰────────────────────────────╯╰────────────────────╯╰────────────────╯
+ jobs ────────────────────────────────────────────────────────────────────────────────────────────
+  job          state       round             eval loss  acc     loss, last rounds
+  mnist-cnn    ● running   ▰▰▰▱▱▱▱▱▱▱ 6/20   0.412      88.3 %  █▇▆▅▄▃▂▂▁▁
+ your machines ───────────────────────────────────────────────────────────────────────────────────
+  machine       status       detail         cpu       mem       gpu %     job / round        seen
+  eduardo-mbp   ● training   step 19/50     ▰▰▱▱▱ 38  ▰▰▱▱▱ 46  ▰▰▰▰▱ 71  job_faf2081e53 r6  3 s
+  win-tower     ● training   step 50/50     ▰▱▱▱▱ 22  ▰▰▱▱▱ 31  ▰▰▰▰▰ 88  job_faf2081e53 r6  3 s
+  mac-mini      ● idle       waiting        ▱▱▱▱▱ 4   ▰▰▱▱▱ 35  –                             3 s
 
-  › Press  j  jobs   t  trainers   n  network   c  credits   ?  help   q  quit
+ 1-5 tabs   tab next   r refresh   ? help   q quit                        ↻ 2 s · updated 1 s ago
 ```
 
 **Commands.** Flat verbs grouped by noun; every command accepts `--json` for scripting
 and `--plain` for logs.
 
 ```
-plasmon                                                      open the home screen
+plasmon                                                      intro, then the live dashboard (five tabs)
 plasmon login | logout | whoami                              device-code login (prints a code and URL; confirm in the browser)
 plasmon init                                                 create this machine's Ed25519 keypair and link it to your account
 
@@ -439,7 +459,7 @@ plasmon validator start | status
 plasmon net status | peers | rounds <job>
 plasmon credits                                              balance and recent ledger entries; `credits buy` opens the browser
 plasmon ledger verify                                        re-verify the hash chain and signatures of the public ledger
-plasmon dashboard                                            full-screen TUI (same panels as the home screen, live)
+plasmon dashboard                                            the same dashboard, as an explicit command
 
 plasmon daemon start | stop | status                         warm-connection daemon (started automatically on first use)
 plasmon update                                               self-update from the signed release manifest

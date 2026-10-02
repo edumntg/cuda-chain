@@ -307,7 +307,7 @@ fn run() -> Result<i32> {
                 );
                 commands::job_list(server, false, false)?;
             } else {
-                tui::home(&api, true)?;
+                tui::dashboard(&api, Duration::from_secs(2), true)?;
             }
             Ok(0)
         }
@@ -365,6 +365,13 @@ fn run() -> Result<i32> {
                 }
                 if never_on_battery {
                     args.push("--never-on-battery".to_string());
+                }
+                if !plain && !cli.json {
+                    let target = server
+                        .map(str::to_string)
+                        .or_else(|| paths::Credentials::load().ok().flatten().map(|c| c.server))
+                        .unwrap_or_default();
+                    tui::intro_inline(&format!("trainer · {target} · Ctrl-C stops"))?;
                 }
                 python::run(&with_server_vec(server, args, false))
             }
@@ -470,7 +477,7 @@ fn run() -> Result<i32> {
                 commands::job_list(server, false, cli.json)?;
                 commands::fleet(server, None, cli.json).map(|_| 0)
             } else {
-                tui::dashboard(&commands::api(server)?, Duration::from_secs(2)).map(|_| 0)
+                tui::dashboard(&commands::api(server)?, Duration::from_secs(2), true).map(|_| 0)
             }
         }
         Some(Command::Completions { shell }) => {

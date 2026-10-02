@@ -202,6 +202,9 @@ pub fn job_status(server: Option<&str>, id: &str, json: bool) -> Result<()> {
         job["total_rounds"],
         job["param_count"]
     );
+    if let Some(w) = job["waiting_reason"].as_str() {
+        println!("  waiting: {w}");
+    }
     let rows: Vec<Vec<String>> = job["rounds"]
         .as_array()
         .map(|a| a.iter().map(round_row).collect())

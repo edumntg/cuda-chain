@@ -279,7 +279,7 @@
       var nodes = g.querySelector(".ps-group-nodes"), keepM = {};
       if (!members.length) {
         var w = nodeEl(nodes, "wait:" + j.id, "/jobs/" + j.id);
-        setNode(w, { status: "unavailable", icon: "clock", title: "waiting", sub: "no trainer yet", href: "/jobs/" + j.id, kv: [["round", j.round + "/" + j.total_rounds]] });
+        setNode(w, { status: "unavailable", icon: "clock", title: "waiting", sub: j.waiting_reason || "no trainer yet", tooltip: j.waiting_reason || "no trainer yet", href: "/jobs/" + j.id, kv: [["round", j.round + "/" + j.total_rounds]] });
         keepM["wait:" + j.id] = true;
       }
       members.forEach(function (m) { machineNode(nodes, m); keepM["m:" + m.node_id] = true; });
@@ -386,10 +386,10 @@
 
     var g = groupEl(cols.trainers, "round");
     var revealed = ups.filter(function (u) { return ["revealed", "accepted"].indexOf(u.status) >= 0; }).length;
-    setGroup(g, { status: open ? (ups.length ? "training" : "unavailable") : "idle", name: "round " + ri, state: open ? revealed + "/" + ups.length + " updates in" : (current ? current.accepted + " accepted" : "–"), port: false });
+    setGroup(g, { status: open ? (ups.length ? "training" : "unavailable") : "idle", name: "round " + ri, state: open ? (ups.length ? revealed + "/" + ups.length + " updates in" : "waiting") : (current ? current.accepted + " accepted" : "–"), port: false });
     var tn = g.querySelector(".ps-group-nodes"), keepT = {}; tn.classList.add("ps-vertical");
     if (!ups.length) {
-      var w = nodeEl(tn, "wait"); setNode(w, { status: "unavailable", icon: "clock", title: "no trainer yet", sub: "joins at next heartbeat", kv: [] }); keepT.wait = true;
+      var w = nodeEl(tn, "wait"); setNode(w, { status: "unavailable", icon: "clock", title: "no trainer yet", sub: job.waiting_reason || "joins at next heartbeat", tooltip: job.waiting_reason || "", kv: [] }); keepT.wait = true;
     }
     ups.forEach(function (u) {
       var st = u.status === "assigned" ? "unavailable" : u.status === "committed" ? "paused" : (u.status === "revealed" || u.status === "accepted") ? "training" : "offline";

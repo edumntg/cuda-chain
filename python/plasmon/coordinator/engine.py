@@ -153,12 +153,7 @@ class Engine:
         """Give an idle machine the current round of the job that needs it most."""
         if machine.paused_by_admin or machine.draining:
             return None
-        busy = session.scalar(
-            select(func.count()).select_from(db.Update).where(
-                db.Update.machine_id == machine.id, db.Update.status.in_(("assigned", "committed"))
-            )
-        )
-        if busy:
+        if _holds_update(session, machine):
             return None
         jobs = session.scalars(select(db.Job).where(db.Job.status == "running").order_by(db.Job.created_at)).all()
         candidates: list[tuple[int, db.Job, db.Round, JobSpec, db.Update | None]] = []
@@ -294,6 +289,9 @@ class Engine:
                         job.status = "failed"
                         job.status_detail = "aggregation error, see server log"
                         job.finished_at = db.now()
+                        for u in session.scalars(select(db.Update).where(db.Update.job_id == job.id, db.Update.status.in_(("assigned", "committed")))):
+                            u.status = "expired"
+                            u.reject_reason = "job failed"
                         session.commit()
                         self.bus.publish(f"job:{job.id}", {"event": "failed", "job": job.id})
                         self.notify("job.failed", f"job {job.name} ({job.id}) failed: aggregation error", job=job.id, name=job.name)
@@ -498,6 +496,64 @@ class Engine:
     def notify(self, event: str, text: str, **data) -> None:
         if self.notifier is not None:
             self.notifier.send(event, text, data)
+
+
+def _holds_update(session: Session, machine: db.Machine) -> bool:
+    """True while the machine has an update in flight for a round of a running job."""
+    n = session.scalar(
+        select(func.count())
+        .select_from(db.Update)
+        .join(db.Job, db.Job.id == db.Update.job_id)
+        .where(db.Update.machine_id == machine.id, db.Update.status.in_(("assigned", "committed")), db.Job.status == "running")
+    )
+    return bool(n)
+
+
+def _plural(n: int, word: str) -> str:
+    return f"{n} {word}" if n == 1 else f"{n} {word}s"
+
+
+def waiting_reason(session: Session, job: db.Job) -> str | None:
+    """One sentence that says why a running job has no trainer right now. None when it has one."""
+    if job.status != "running":
+        return None
+    rnd = Engine.current_round(session, job)
+    if rnd is None or rnd.status != "open":
+        return None
+    in_flight = session.scalar(
+        select(func.count())
+        .select_from(db.Update)
+        .where(db.Update.job_id == job.id, db.Update.round_index == rnd.index, db.Update.status.in_(("assigned", "committed", "revealed")))
+    )
+    if in_flight:
+        return None
+    spec = JobSpec.model_validate(job.spec)
+    machines = session.scalars(select(db.Machine).where(db.Machine.status != "offline")).all()
+    if not machines:
+        return "No machine is online. Start one with: plasmon trainer start"
+    idle = [m for m in machines if m.status == "idle" and not m.paused_by_admin and not m.draining]
+    if not idle:
+        counts: dict[str, int] = {}
+        for m in machines:
+            key = "paused" if m.paused_by_admin else m.status
+            counts[key] = counts.get(key, 0) + 1
+        detail = ", ".join(f"{n} {st}" for st, n in sorted(counts.items()))
+        return f"{_plural(len(machines), 'machine')} online but none is idle: {detail}"
+    fit = [m for m in idle if _machine_fits(m, spec)]
+    if not fit:
+        req = spec.requirements
+        need = []
+        if req.device != "any":
+            need.append(f"device {req.device}")
+        if req.min_vram_gb:
+            need.append(f"{req.min_vram_gb:g} GB of GPU memory")
+        verb = "does" if len(idle) == 1 else "do"
+        return f"{_plural(len(idle), 'idle machine')} {verb} not meet the job requirements: {' and '.join(need)}"
+    free = [m for m in fit if not _holds_update(session, m)]
+    if not free:
+        return f"{_plural(len(fit), 'idle machine')} still holds an update of another round; it is free when that round closes or expires"
+    verb = "fits" if len(free) == 1 else "fit"
+    return f"{_plural(len(free), 'idle machine')} {verb}; the next heartbeat assigns the round"
 
 
 def _machine_fits(machine: db.Machine, spec: JobSpec) -> bool:

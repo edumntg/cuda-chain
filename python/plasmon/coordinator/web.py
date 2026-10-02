@@ -14,6 +14,7 @@ from .. import __version__
 from . import api_auth, api_credits, api_fleet, auth, credits, db, ledger, policy
 from .config import OrgPolicy
 from .deps import Principal, get_session, get_state, principal_optional
+from .engine import waiting_reason
 
 router = APIRouter(include_in_schema=False)
 
@@ -157,7 +158,11 @@ def overview(request: Request, p: Principal = Depends(principal_optional), sessi
     mine = session.scalars(select(db.Machine).where(db.Machine.user_id == user.id)).all()
     last = session.scalar(select(db.LedgerEntry).order_by(db.LedgerEntry.seq.desc()).limit(1))
     top = session.scalars(select(db.Machine).where(db.Machine.samples_verified > 0).order_by(db.Machine.samples_verified.desc()).limit(10)).all()
-    return render(request, "overview.html", p, summary=_summary(session), active_jobs=active, losses=_losses(session, active), recent=recent, mine=mine, last=last, top=top)
+    return render(request, "overview.html", p, summary=_summary(session), active_jobs=active, losses=_losses(session, active), waiting=_waiting(session, active), recent=recent, mine=mine, last=last, top=top)
+
+
+def _waiting(session: Session, jobs: list[db.Job]) -> dict[str, str]:
+    return {j.id: r for j in jobs if (r := waiting_reason(session, j))}
 
 
 def _losses(session: Session, jobs: list[db.Job]) -> dict[str, list[float]]:
@@ -172,7 +177,7 @@ def _losses(session: Session, jobs: list[db.Job]) -> dict[str, list[float]]:
 def overview_partial(request: Request, p: Principal = Depends(principal_optional), session: Session = Depends(get_session)):
     need_user(p)
     active = session.scalars(select(db.Job).where(db.Job.status == "running").order_by(db.Job.created_at.desc()).limit(6)).all()
-    return render(request, "partials/overview_stats.html", p, summary=_summary(session), active_jobs=active, losses=_losses(session, active))
+    return render(request, "partials/overview_stats.html", p, summary=_summary(session), active_jobs=active, losses=_losses(session, active), waiting=_waiting(session, active))
 
 
 @router.get("/jobs", response_class=HTMLResponse)
@@ -241,7 +246,7 @@ def job_page(request: Request, job_id: str, p: Principal = Depends(principal_opt
     updates = session.scalars(select(db.Update).where(db.Update.job_id == job.id).order_by(db.Update.round_index.desc(), db.Update.id).limit(200)).all()
     closed = [r for r in rounds if r.status == "closed"]
     series = {"rounds": [r.index for r in closed], "loss": [r.eval_loss for r in closed], "acc": [r.eval_acc for r in closed]}
-    return render(request, "job.html", p, job=job, rounds=rounds, updates=updates, series=series, after=_weights_after(job, rounds), show_names=auth.role_at_least(user.role, "operator"))
+    return render(request, "job.html", p, job=job, rounds=rounds, updates=updates, series=series, after=_weights_after(job, rounds), waiting=waiting_reason(session, job), show_names=auth.role_at_least(user.role, "operator"))
 
 
 def _weights_after(job: db.Job, rounds: list[db.Round]) -> dict[int, str]:
@@ -264,7 +269,7 @@ def job_partial(request: Request, job_id: str, p: Principal = Depends(principal_
     updates = session.scalars(select(db.Update).where(db.Update.job_id == job.id).order_by(db.Update.round_index.desc(), db.Update.id).limit(200)).all()
     closed = [r for r in rounds if r.status == "closed"]
     series = {"rounds": [r.index for r in closed], "loss": [r.eval_loss for r in closed], "acc": [r.eval_acc for r in closed]}
-    return render(request, "partials/job_live.html", p, job=job, rounds=rounds, updates=updates, series=series, after=_weights_after(job, rounds), show_names=auth.role_at_least(user.role, "operator"))
+    return render(request, "partials/job_live.html", p, job=job, rounds=rounds, updates=updates, series=series, after=_weights_after(job, rounds), waiting=waiting_reason(session, job), show_names=auth.role_at_least(user.role, "operator"))
 
 
 @router.get("/jobs/{job_id}/download")

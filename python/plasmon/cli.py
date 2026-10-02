@@ -262,6 +262,8 @@ def cmd_job_status(args: argparse.Namespace) -> int:
     job = _client(args).job(args.id)
     rows = [[r["index"], r["status"], r["accepted"], f"{r['eval_loss']:.4f}" if r["eval_loss"] is not None else "", f"{100 * r['eval_acc']:.1f} %" if r["eval_acc"] is not None else "", f"{r['bytes_in']:,}"] for r in job["rounds"]]
     head = f"{job['name']} ({job['id']})  {job['status']}  round {job['round']}/{job['total_rounds']}  params {job['param_count']:,}"
+    if job.get("waiting_reason"):
+        head += f"\n  waiting: {job['waiting_reason']}"
     text = head + "\n" + _fmt_table(rows, ["round", "status", "trainers", "eval loss", "eval acc", "bytes in"])
     if args.updates:
         ups = _client(args).job_updates(args.id)

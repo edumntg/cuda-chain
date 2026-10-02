@@ -11,7 +11,9 @@ APP = "plasmon"
 
 
 def config_dir() -> Path:
-    return Path(os.environ.get("PLASMON_CONFIG_DIR") or user_config_dir(APP, appauthor=False))
+    """Same directory the native `plasmon` binary uses: ~/.config/plasmon on Linux,
+    ~/Library/Application Support/plasmon on macOS, %APPDATA%\\plasmon on Windows."""
+    return Path(os.environ.get("PLASMON_CONFIG_DIR") or user_config_dir(APP, appauthor=False, roaming=True))
 
 
 def data_dir() -> Path:

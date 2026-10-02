@@ -1,40 +1,53 @@
 # Home lab: a Mac and a Windows PC
 
-This procedure trains an MNIST classifier on two computers at home. The Mac runs the
-coordinator and one trainer. The Windows PC runs a second trainer. You submit the job from
-the Mac and watch it on both.
+This procedure trains an MNIST classifier on two computers at home with the `plasmon`
+command. The Mac runs the coordinator and one trainer. The Windows PC runs a second
+trainer. You submit the job from the Mac and watch it on both.
 
-The same steps work with the roles reversed. For more computers or other systems, see
-[LOCAL-NETWORK.md](LOCAL-NETWORK.md) and the scripts in `examples/local-network/`.
+The same steps work with the roles reversed. For more computers, see
+[LOCAL-NETWORK.md](LOCAL-NETWORK.md).
 
 ## Before you start
 
-- Both computers are on the same local network.
+- Both computers are on the same Wi-Fi.
 - Python 3.11 or newer is installed on both.
-  - Mac: `brew install python@3.12` or the installer from python.org.
+  - Mac: `brew install python@3.12`, or the installer from python.org.
   - Windows: the installer from python.org. Select **Add python.exe to PATH**.
-- You know the IP address of the Mac. Find it in System Settings, Network, or with
-  `ipconfig getifaddr en0` in Terminal. The examples use `192.168.1.20`.
+- You know the IP address of the Mac. In Terminal: `ipconfig getifaddr en0`. The examples
+  use `192.168.1.20`.
 - No GPU is required. The job trains on CPU in a few minutes. A Mac with Apple Silicon
-  uses the GPU through Metal automatically.
+  uses its GPU through Metal automatically.
 
-## Part A: the Mac (server and first trainer)
+Every step below uses the `plasmon` command. If you skip the CLI install, the same
+commands work as `python3 -m plasmon ...` (Mac) or `py -m plasmon ...` (Windows), without
+the live terminal views.
 
-### A1. Install the engine
+## Part A: the Mac, server and first trainer
+
+### A1. Install the CLI and the engine
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.sh | sh
 python3 -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
+```
+
+Open a new Terminal window so `plasmon` is on the PATH, then check:
+
+```bash
+plasmon --version
 python3 -m plasmon --version
 ```
+
+Both print `plasmon 0.1.0`.
 
 ### A2. Start the coordinator
 
 ```bash
-python3 -m plasmon server init --org home
-python3 -m plasmon server start
+plasmon server init --org home
+plasmon server start
 ```
 
-The server prints:
+Output:
 
 ```
 plasmon coordinator
@@ -43,69 +56,121 @@ plasmon coordinator
   data       /Users/you/Library/Application Support/plasmon/server
 ```
 
-Keep this terminal open.
-
-If macOS asks "Do you want the application to accept incoming network connections?",
-select **Allow**.
+Keep this window open. If macOS asks "Do you want the application Python to accept
+incoming network connections?", select **Allow**.
 
 ### A3. Create the owner account
 
 Open `http://192.168.1.20:7117` in a browser. Select **Create account**. The first account
 becomes the owner.
 
-### A4. Log in from Terminal and start the first trainer
+### A4. Log in from Terminal
 
 Open a second Terminal window:
 
 ```bash
-python3 -m plasmon login --server http://192.168.1.20:7117
-python3 -m plasmon trainer start --name mac
+plasmon login --server http://192.168.1.20:7117
 ```
 
-The login command shows a code and opens the browser. Confirm the code. The trainer then
-enrols the Mac and waits for a round. Keep this window open.
+The command prints a code and opens the browser. Confirm the code. Then create the
+machine key of the Mac and check both:
 
-## Part B: the Windows PC (second trainer)
+```bash
+plasmon init
+plasmon whoami
+```
 
-### B1. Install the engine
+```
+created machine key: /Users/you/Library/Application Support/plasmon/machine.key
+node id: 9f3a1c2b…
+server:  http://192.168.1.20:7117
+user:    you@example.com (owner)
+```
+
+The node id identifies this computer in the fleet. `trainer start` creates the key too
+when it is missing.
+
+### A5. Start the first trainer
+
+In the same window:
+
+```bash
+plasmon trainer start --name mac
+```
+
+```
+12:40:01 INFO enrolled machine 9f3a1c2b as mac
+12:40:01 INFO trainer mac on http://192.168.1.20:7117, device mps
+```
+
+Keep this window open. The Mac now waits for a round.
+
+## Part B: the Windows PC, second trainer
+
+### B1. Install the CLI and the engine
 
 Open PowerShell:
 
 ```powershell
+powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"
 py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
+```
+
+If `git` is not installed, install it from https://git-scm.com first. Open a new
+PowerShell window, then check:
+
+```powershell
+plasmon --version
 py -m plasmon --version
 ```
 
-If `git` is not installed, install it from https://git-scm.com first, or use the zip:
+### B2. Log in
 
 ```powershell
-py -m pip install "https://github.com/edumntg/plasmon/archive/refs/heads/main.zip#egg=plasmon[engine]"
+plasmon login --server http://192.168.1.20:7117
 ```
 
-### B2. Log in and start the trainer
+Confirm the code in the browser. Log in with the account you created on the Mac, or
+create a second account for the person who owns this PC.
+
+### B3. Start the trainer
 
 ```powershell
-py -m plasmon login --server http://192.168.1.20:7117
-py -m plasmon trainer start --name windows
+plasmon trainer start --name windows
 ```
 
-Confirm the code in the browser. Log in with the same account you created on the Mac, or
-create a second account for this person. The trainer enrols the PC and waits.
+If Windows Firewall shows a prompt for Python, select **Allow**. The trainer opens only
+outgoing connections. The PC now waits for a round.
 
-If Windows Firewall shows a prompt, select **Allow**. The trainer only opens outgoing
-connections; the prompt is for Python itself.
+## Part C: check the fleet
 
-## Part C: submit the job from the Mac
+On the Mac, open a third Terminal window:
 
-Open a third Terminal window on the Mac:
+```bash
+plasmon fleet
+```
+
+```
+machine  owner            status  gpu        gpu%  cpu%  ram%  job / round  honesty  seen
+mac      you@example.com  idle    Apple GPU        12    41                 1.00     3 s
+windows  you@example.com  idle    none             8     55                 1.00     5 s
+```
+
+Both machines show `idle`. For the live version, press `q` to leave it:
+
+```bash
+plasmon fleet --watch
+```
+
+## Part D: submit the job
+
+In the third Terminal window:
 
 ```bash
 git clone https://github.com/edumntg/plasmon.git
 cd plasmon
-python3 -m plasmon job submit examples/mnist/job.yaml
+plasmon job submit examples/mnist/job.yaml
 ```
-
-Output:
 
 ```
 initial weights: mnist_cnn seed 0
@@ -118,79 +183,96 @@ submitted mnist-home as job_3f2a9c1e0b7d
   page:  http://192.168.1.20:7117/jobs/job_3f2a9c1e0b7d
 ```
 
-Within a few seconds both trainers print a line like:
+Within a few seconds the two trainer windows print lines like:
 
 ```
-12:40:03 INFO round 0 of mnist-home: shard 17 (1000 samples)
-12:40:06 INFO round 0 done: loss 2.301→0.412, 71,234 bytes up, fetch 0.3s train 2.1s upload 0.2s
+12:41:03 INFO round 0 of mnist-home: shard 17 (1000 samples)
+12:41:06 INFO round 0 done: loss 2.301→0.412, 71,234 bytes up, fetch 0.3s train 2.1s upload 0.2s
 ```
 
-## Part D: watch
+## Part E: watch
 
-In the third Terminal window:
+Follow the job in the third window. The screen shows the loss per round, the rounds table
+and which machine trained each round. Press `q` to leave; the job continues.
 
 ```bash
-python3 -m plasmon job watch job_3f2a9c1e0b7d
+plasmon job watch job_3f2a9c1e0b7d
 ```
 
-Each closed round prints one line. Twenty rounds take two to four minutes on two CPUs.
+Other views, each one live:
 
-In the browser:
+```bash
+plasmon fleet --watch                       # both machines: status, CPU, RAM, current round
+plasmon fleet show <node id> --watch        # one machine: gauges, sparkline, log tail
+plasmon fleet logs <node id> -f             # one machine's log, followed
+plasmon dashboard                           # one screen with tabs: j jobs, f fleet, m my machines, s server
+plasmon server status                       # the coordinator: database, blobs, ledger, counts
+plasmon job status job_3f2a9c1e0b7d         # the rounds table, once
+```
 
-- **Jobs**, then the job: the loss and accuracy chart, the rounds table and which machine
-  trained each round.
-- **My machine**: the status of the Mac or the PC, CPU and RAM use, rounds served, and the
-  trainer log.
-- **Fleet** (owner or operator): both machines side by side.
-- **Ledger**: one signed entry per round. Select **Ledger** and read "chain verified".
+The node id is the first column of `plasmon fleet --json`. In the browser, the job page,
+**Fleet**, **My machine** and **Ledger** show the same data.
 
-In a terminal, `python3 -m plasmon fleet` prints the same table as the Fleet page.
+Twenty rounds take two to four minutes on the two CPUs.
 
-## Part E: download and test the model
+## Part F: download and test the model
 
 On the Mac:
 
 ```bash
-python3 -m plasmon job download job_3f2a9c1e0b7d -o mnist.safetensors
+plasmon job download job_3f2a9c1e0b7d -o mnist.safetensors
 python3 examples/mnist/eval.py mnist.safetensors
 ```
 
-Expected output after twenty rounds: an accuracy between 96 % and 98 % on the 10,000 test
+Expected after twenty rounds: an accuracy between 96 % and 98 % on the 10,000 test
 images.
 
-## Part F: run the trainers at login (optional)
+Check the signed record of the run:
+
+```bash
+plasmon ledger verify
+```
+
+```
+ledger ok: true  entries: 22
+```
+
+## Part G: run the trainers at login (optional)
 
 On each computer, replace the `trainer start` window with a service that starts at login:
 
 ```bash
-python3 -m plasmon trainer enable --name mac           # Mac: launchd agent
+plasmon trainer enable --name mac               # Mac: launchd agent
 ```
 
 ```powershell
-py -m plasmon trainer enable --name windows             # Windows: scheduled task
+plasmon trainer enable --name windows           # Windows: scheduled task
 ```
 
 Add `--hours "daily 22:00-07:00"` to train only at night. Remove the service with
-`trainer disable`.
+`plasmon trainer disable`.
 
-## Part G: run it again
+## Part H: run it again
 
 Submit the same job again. The upload step prints `uploading 1 of 62 blobs`: the shards
 are already on the server, only the job record is new.
 
-Change `inner_steps` or `rounds` in `examples/mnist/job.yaml` and submit again to compare.
+Change `inner_steps` or `rounds` in `examples/mnist/job.yaml` and submit again to compare
+the two runs on the **Jobs** page.
 
 ## Problems and solutions
 
 | Problem | Cause | Solution |
 |---|---|---|
+| `plasmon: command not found` after the install | The install directory is not on the PATH yet | Open a new terminal window. The installer prints the PATH line to add if needed. |
+| `the plasmon Python package was not found` | The engine is not installed for the Python the CLI found | Run the `pip install` line again. Set `PLASMON_PYTHON` to the right interpreter if you have several. |
 | `cannot reach http://192.168.1.20:7117` on the PC | Firewall on the Mac, or a different network | On the Mac, System Settings, Network, Firewall: allow Python. Make sure both computers use the same Wi-Fi. |
 | The trainer prints `heartbeat failed: 401` | The machine token was revoked | The trainer re-enrols by itself. If it does not, run `plasmon login` again. |
-| The job stays at round 0 | No trainer is idle, or the trainers cannot reach the server | Check **Fleet** on the dashboard. Each machine must show `idle` or `training`. |
+| The job stays at round 0 | No trainer is idle, or the trainers cannot reach the server | `plasmon fleet`: each machine must show `idle` or `training`. |
 | A round shows `expired` for one machine | The machine went offline or exceeded `round_timeout_s` | The round closes with the other machine's update. Nothing to do. |
 | `No module named torch` on Windows | The install did not finish | Run the install command again and read the last lines of the output. |
 
 ## Stop
 
-Press `Ctrl+C` in each terminal window. The server keeps all data; the next `server start`
+Press `Ctrl+C` in each window. The server keeps all data; the next `plasmon server start`
 continues with the same accounts, jobs and ledger.

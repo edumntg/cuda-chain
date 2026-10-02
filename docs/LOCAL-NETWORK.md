@@ -6,8 +6,8 @@ computer can submit a job. No internet access is needed after the installation.
 
 The example trains the MNIST classifier from `examples/mnist/job.yaml`. It works on CPUs.
 
-For the shortest version with exactly two computers, see [HOME-LAB.md](HOME-LAB.md). For
-scripts that do these steps for you, see [`examples/local-network/`](../examples/local-network/).
+Every step uses the `plasmon` command. For the version with exactly a Mac and a Windows
+PC, see [HOME-LAB.md](HOME-LAB.md).
 
 ## Words used here
 
@@ -40,35 +40,41 @@ Write it down. The examples below use `192.168.1.20`. If your router gives a dif
 address later, participants must log in again with the new one. A DHCP reservation in the
 router keeps the address fixed.
 
-## Step 2: install the engine on every computer
+## Step 2: install the CLI and the engine on every computer
 
 macOS and Linux:
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.sh | sh
 python3 -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
-python3 -m plasmon --version
 ```
 
 Windows (PowerShell):
 
 ```powershell
+powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"
 py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
-py -m plasmon --version
+```
+
+Open a new terminal window, then check on each computer:
+
+```bash
+plasmon --version
 ```
 
 On Linux, install PyTorch for CPU first to avoid the CUDA download:
 `python3 -m pip install torch --index-url https://download.pytorch.org/whl/cpu`.
 
-Optional: install the native `plasmon` command for the live terminal views. See the
-install commands in the README. Everything below also works with `python -m plasmon`.
+Without the CLI binary, the same commands work as `python3 -m plasmon ...` or
+`py -m plasmon ...`, without the live terminal views.
 
 ## Step 3: start the server
 
 On the server:
 
 ```bash
-python3 -m plasmon server init --org home
-python3 -m plasmon server start
+plasmon server init --org home
+plasmon server start
 ```
 
 The server prints its dashboard address:
@@ -102,15 +108,15 @@ the same way, or share one account at home.
 On each participant (and on the server too, if it should train as well):
 
 ```bash
-python3 -m plasmon login --server http://192.168.1.20:7117
-python3 -m plasmon trainer start --name living-room-pc
+plasmon login --server http://192.168.1.20:7117
+plasmon trainer start --name living-room-pc
 ```
 
 Windows:
 
 ```powershell
-py -m plasmon login --server http://192.168.1.20:7117
-py -m plasmon trainer start --name office-laptop
+plasmon login --server http://192.168.1.20:7117
+plasmon trainer start --name office-laptop
 ```
 
 `login` shows a code and opens the browser. Confirm the code in the browser. The trainer
@@ -124,11 +130,16 @@ then enrols the computer and waits for a round:
 Keep the terminal open, or install it as a service that starts at login:
 
 ```bash
-python3 -m plasmon trainer enable --name living-room-pc
+plasmon trainer enable --name living-room-pc
 ```
 
-Check the fleet on the dashboard (**Fleet**, owner or operator) or from any logged-in
-computer: `python3 -m plasmon fleet`. Each participant shows `idle`.
+Check the fleet from any logged-in computer, or on the dashboard (**Fleet**, owner or
+operator). Each participant shows `idle`:
+
+```bash
+plasmon fleet
+plasmon fleet --watch        # live; q leaves
+```
 
 ## Step 6: submit a job
 
@@ -137,7 +148,7 @@ From any computer that is logged in:
 ```bash
 git clone https://github.com/edumntg/plasmon.git
 cd plasmon
-python3 -m plasmon job submit examples/mnist/job.yaml
+plasmon job submit examples/mnist/job.yaml
 ```
 
 Or open **Jobs**, **Submit a job** on the dashboard, and submit the prefilled text.
@@ -154,18 +165,21 @@ print lines like:
 
 | What | Dashboard | Terminal |
 |---|---|---|
-| the job: loss, rounds, which computer trained each round | **Jobs**, then the job | `python3 -m plasmon job watch <id>` |
-| all participants: status, CPU, RAM, GPU, current round | **Fleet** | `python3 -m plasmon fleet` or `plasmon fleet --watch` |
+| the job: loss, rounds, which computer trained each round | **Jobs**, then the job | `plasmon job watch <id>` |
+| all participants: status, CPU, RAM, GPU, current round | **Fleet** | `plasmon fleet --watch` |
 | one participant, with its log | **My machine** or **Fleet**, then the computer | `plasmon fleet show <node> --watch`, `plasmon fleet logs <node> -f` |
-| the server | **Server** | `plasmon server status` |
-| the signed record of every round | **Ledger** | `python3 -m plasmon ledger verify` |
+| everything on one screen | | `plasmon dashboard` |
+| the server | **Server** | `plasmon server status --watch` |
+| the signed record of every round | **Ledger** | `plasmon ledger verify` |
+
+The node id of a participant is the first column of `plasmon fleet --json`.
 
 Twenty rounds take two to five minutes on two or three CPUs.
 
 ## Step 8: get the model
 
 ```bash
-python3 -m plasmon job download <id> -o mnist.safetensors
+plasmon job download <id> -o mnist.safetensors
 python3 examples/mnist/eval.py mnist.safetensors
 ```
 
@@ -193,6 +207,12 @@ Expected: an accuracy between 96 % and 98 % on the 10,000 MNIST test images.
 | The job stays at round 0 | **Fleet**: is at least one participant `idle`? | Start a trainer. `requirements.min_trainers` in the job must not exceed the number of participants. |
 | Rounds are slow | Participant log: the `train` time | The job's `inner_steps` and `batch_size` set the work per round. Lower them for slow computers. |
 | The server address changed after a restart of the router | `ipconfig getifaddr en0` on the server | Participants run `login` again with the new address. Set a DHCP reservation to avoid this. |
+
+## Scripts
+
+The folder [`examples/local-network/`](../examples/local-network/) has shell scripts
+that run the same commands for a server, a participant and a submission. They are for
+automation; the steps above are the reference.
 
 ## Data and privacy on a local network
 

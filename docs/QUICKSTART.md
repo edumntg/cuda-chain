@@ -13,11 +13,15 @@ Wi-Fi, see [LOCAL-NETWORK.md](LOCAL-NETWORK.md). For exactly a Mac and a Windows
 
 A GPU is optional. The example job trains a small CNN on MNIST on a CPU in a few minutes.
 
-## Step 1: install the engine
+## Step 1: install the CLI and the engine
 
 ```bash
+curl -fsSL https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.sh | sh    # Linux, macOS
 python -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"
 ```
+
+Windows: `powershell -c "irm https://raw.githubusercontent.com/edumntg/plasmon/main/install/install.ps1 | iex"`
+and `py -m pip install "plasmon[engine] @ git+https://github.com/edumntg/plasmon.git"`.
 
 On Linux, install PyTorch for CPU first to avoid the CUDA download:
 
@@ -25,17 +29,19 @@ On Linux, install PyTorch for CPU first to avoid the CUDA download:
 python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
 ```
 
-Check the installation:
+Open a new terminal and check the installation:
 
 ```bash
-python -m plasmon --version
+plasmon --version
 ```
+
+Every `plasmon` command below also works as `python -m plasmon`, without the live views.
 
 ## Step 2: start the coordinator
 
 ```bash
-python -m plasmon server init
-python -m plasmon server start
+plasmon server init
+plasmon server start
 ```
 
 The server prints the dashboard address, for example `http://192.168.1.20:7117`. Keep
@@ -51,7 +57,7 @@ server becomes the owner.
 Open a second terminal:
 
 ```bash
-python -m plasmon login --server http://127.0.0.1:7117
+plasmon login --server http://127.0.0.1:7117
 ```
 
 The command shows a code and opens the browser. Confirm the code in the browser. The
@@ -60,7 +66,7 @@ command line is now logged in.
 ## Step 5: start a trainer
 
 ```bash
-python -m plasmon trainer start --name my-pc
+plasmon trainer start --name my-pc
 ```
 
 The trainer enrols the machine and waits for a round. Keep this terminal open. The
@@ -73,7 +79,7 @@ Open a third terminal:
 ```bash
 git clone https://github.com/edumntg/plasmon.git
 cd plasmon
-python -m plasmon job submit examples/mnist/job.yaml
+plasmon job submit examples/mnist/job.yaml
 ```
 
 The command uploads the initial weights and the data shards, then prints the job id.
@@ -81,16 +87,17 @@ The command uploads the initial weights and the data shards, then prints the job
 ## Step 7: watch
 
 ```bash
-python -m plasmon job watch <job id>
+plasmon job watch <job id>
 ```
 
-Each closed round prints one line: trainers, evaluation loss, accuracy, bytes received.
-The dashboard page **Jobs** shows the same data as a chart.
+The screen shows the loss per round, the rounds table and the trainer. Press `q` to
+leave; the job continues. The dashboard page **Jobs** shows the same data as a chart.
+`plasmon fleet --watch` shows the machine, `plasmon dashboard` shows everything.
 
 ## Step 8: download and test the model
 
 ```bash
-python -m plasmon job download <job id> -o mnist.safetensors
+plasmon job download <job id> -o mnist.safetensors
 python examples/mnist/eval.py mnist.safetensors
 ```
 

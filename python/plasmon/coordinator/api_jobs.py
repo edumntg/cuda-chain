@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from ..core.jobspec import JobSpec
 from . import auth, db
 from .deps import Principal, current_user, get_session, get_state, principal_optional
-from .engine import EngineError, waiting_reason
+from .engine import EngineError, recent_trainers, waiting_reason
 
 router = APIRouter(prefix="/v1/jobs", tags=["jobs"])
 
@@ -31,7 +31,7 @@ class JobCreate(BaseModel):
     param_count: int = 0
 
 
-def job_out(job: db.Job, rounds: list[db.Round] | None = None, session: Session | None = None) -> dict[str, Any]:
+def job_out(job: db.Job, rounds: list[db.Round] | None = None, session: Session | None = None, show_names: bool = True) -> dict[str, Any]:
     out = {
         "id": job.id,
         "name": job.name,
@@ -54,6 +54,7 @@ def job_out(job: db.Job, rounds: list[db.Round] | None = None, session: Session 
         out["rounds"] = [round_out(r) for r in rounds]
     if session is not None:
         out["waiting_reason"] = waiting_reason(session, job)
+        out["trainers"] = recent_trainers(session, job, show_names)
     return out
 
 
@@ -98,7 +99,8 @@ def list_jobs(all: bool = False, user: db.User = Depends(current_user), session:
     q = select(db.Job).order_by(db.Job.created_at.desc())
     if not (all and auth.role_at_least(user.role, "operator")):
         q = q.where(db.Job.owner_id == user.id)
-    return [job_out(j, session=session) for j in session.scalars(q).all()]
+    show_names = auth.role_at_least(user.role, "operator")
+    return [job_out(j, session=session, show_names=show_names) for j in session.scalars(q).all()]
 
 
 @router.get("/{job_id}")
@@ -111,7 +113,7 @@ def get_job(job_id: str, p: Principal = Depends(principal_optional), session: Se
     if p.user is not None and not _visible(job, p.user):
         raise HTTPException(403, "not your job")
     rounds = session.scalars(select(db.Round).where(db.Round.job_id == job.id).order_by(db.Round.index)).all()
-    return job_out(job, rounds, session=session)
+    return job_out(job, rounds, session=session, show_names=p.user is not None and auth.role_at_least(p.user.role, "operator"))
 
 
 @router.get("/{job_id}/updates")

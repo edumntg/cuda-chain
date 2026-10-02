@@ -224,6 +224,14 @@ Within a few seconds the two trainer windows print lines like:
 Follow the job in the third window. The screen shows the loss per round, the rounds table
 and which machine trained each round. Press `q` to leave; the job continues.
 
+How the two machines share the work: when a round opens, every idle machine that fits
+the job takes a shard of it. The server does not close a round with fewer trainers than
+there are idle machines until the slower one had two idle polls to join (about 8 seconds),
+so a fast Mac does not take every round alone. Between rounds a machine is idle for a few
+seconds; the dashboard keeps it in the job's box and shows "between rounds", and the fleet
+table shows "round 7 of mnist-home done, waiting for the next". The job page explains a
+real wait with a sentence such as "1 idle machine does not meet the job requirements".
+
 ```bash
 plasmon job watch job_3f2a9c1e0b7d
 ```

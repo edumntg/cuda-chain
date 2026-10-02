@@ -1,0 +1,18 @@
+{% if jobs %}
+<table>
+  <thead><tr><th>job</th><th>owner</th><th>status</th><th class="num">round</th><th class="num">eval loss</th><th class="num">eval acc</th><th>created</th></tr></thead>
+  <tbody>
+  {% for j in jobs %}
+    <tr>
+      <td><a href="/jobs/{{ j.id }}">{{ j.name }}</a><br><span class="muted small">{{ j.id }}</span></td>
+      <td>{{ j.owner.email if j.owner else '' }}</td>
+      <td><span class="jobstatus jobstatus-{{ j.status }}">{{ j.status }}</span></td>
+      <td class="num">{{ j.round_index }} / {{ j.total_rounds }}</td>
+      <td class="num">{{ j.last_eval_loss|f3 }}</td>
+      <td class="num">{{ j.last_eval_acc|pct }}</td>
+      <td>{{ j.created_at|ago }} ago</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">No jobs yet. Submit one with <code>plasmon job submit examples/mnist/job.yaml</code>.</p>{% endif %}

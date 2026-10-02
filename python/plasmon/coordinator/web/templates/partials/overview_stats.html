@@ -1,0 +1,28 @@
+{% import "_macros.html" as m %}
+<div class="focal">
+  <div class="big">{{ summary.online }}<span class="muted"> / {{ summary.machines }}</span></div>
+  <div class="label">machines online</div>
+</div>
+<ul class="totals" aria-label="Machine status totals">
+  <li>{{ m.status('training') }} {{ summary.training }}</li>
+  <li>{{ m.status('idle') }} {{ summary.idle }}</li>
+  <li>{{ m.status('paused') }} {{ summary.paused }}</li>
+  <li>{{ m.status('unavailable') }} {{ summary.unavailable }}</li>
+  <li>{{ m.status('offline') }} {{ summary.offline }}</li>
+  <li>{{ m.status('error') }} {{ summary.error }}</li>
+</ul>
+<dl class="kv">
+  <div><dt>jobs running</dt><dd>{{ summary.jobs_running }}</dd></div>
+  <div><dt>rounds in the last hour</dt><dd>{{ summary.rounds_last_hour }}</dd></div>
+</dl>
+<h2>Active jobs</h2>
+{% if active_jobs %}
+<table>
+  <thead><tr><th>job</th><th>owner</th><th class="num">round</th><th class="num">eval loss</th><th class="num">eval acc</th></tr></thead>
+  <tbody>
+  {% for j in active_jobs %}
+    <tr><td><a href="/jobs/{{ j.id }}">{{ j.name }}</a></td><td>{{ j.owner.email if j.owner else '' }}</td><td class="num">{{ j.round_index }} / {{ j.total_rounds }}</td><td class="num">{{ j.last_eval_loss|f3 }}</td><td class="num">{{ j.last_eval_acc|pct }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">No job is running. Submit one with <code>plasmon job submit job.yaml</code>.</p>{% endif %}

@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}plasmon{% endblock %} · {{ org }}</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="stylesheet" href="/static/vendor/uplot.min.css">
+<script>
+  (function () { var t = localStorage.getItem("plasmon-theme"); if (t) document.documentElement.setAttribute("data-theme", t); })();
+</script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<div class="shell">
+  <nav class="rail" aria-label="Pages">
+    <a class="brand" href="/" aria-label="plasmon overview">
+      <svg class="wave" viewBox="0 0 48 16" width="48" height="16" aria-hidden="true"><path d="M0 8 C 6 0, 12 0, 18 8 S 30 16, 36 8 S 46 2, 48 8" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+      <span>plasmon</span>
+    </a>
+    {% if user %}
+    <a href="/" {% if active == 'overview' %}aria-current="page"{% endif %}>Overview</a>
+    <a href="/jobs" {% if active == 'jobs' %}aria-current="page"{% endif %}>Jobs</a>
+    <a href="/machine" {% if active == 'machine' %}aria-current="page"{% endif %}>My machine</a>
+    {% if role_at_least(user.role, 'operator') %}
+    <a href="/fleet" {% if active == 'fleet' %}aria-current="page"{% endif %}>Fleet</a>
+    <a href="/server" {% if active == 'server' %}aria-current="page"{% endif %}>Server</a>
+    {% endif %}
+    <a href="/ledger" {% if active == 'ledger' %}aria-current="page"{% endif %}>Ledger</a>
+    <div class="rail-foot">
+      <span class="muted small">{{ user.email }} · {{ user.role }}</span>
+      <form method="post" action="/logout"><button class="link" type="submit">Log out</button></form>
+      <button class="link" type="button" id="theme-toggle" aria-pressed="false">Switch theme</button>
+      <span class="muted small">v{{ version }} · {{ mode }} mode</span>
+    </div>
+    {% endif %}
+  </nav>
+  <main id="main" class="content">
+    {% block content %}{% endblock %}
+  </main>
+</div>
+<script src="/static/vendor/htmx.min.js" defer></script>
+<script src="/static/vendor/uplot.min.js" defer></script>
+<script src="/static/app.js" defer></script>
+</body>
+</html>

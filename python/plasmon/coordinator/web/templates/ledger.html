@@ -1,0 +1,18 @@
+{% extends "base.html" %}{% set active = 'ledger' %}{% block title %}Ledger{% endblock %}
+{% block content %}
+<h1>Ledger</h1>
+<div class="focal"><div class="statusline">{% if ok %}<span class="status status-training"><span class="dot"></span>chain verified</span>{% else %}<span class="status status-error"><span class="dot"></span>verification failed</span> {{ problem }}{% endif %} · {{ count }} entries · server key <code>{{ server_node_id[:16] }}…</code></div></div>
+<p class="muted">Each entry hashes its body with the previous hash and carries the server's signature. Anyone with read access can recompute the chain: <code>plasmon ledger verify</code>.</p>
+{% if entries %}
+<table>
+  <thead><tr><th class="num">seq</th><th>when</th><th>kind</th><th>body</th><th>hash</th></tr></thead>
+  <tbody>
+  {% for e in entries %}
+    <tr><td class="num">{{ e.seq }}</td><td>{{ e.at|ago }} ago</td><td>{{ e.kind }}</td>
+      <td class="small">{% if e.kind == 'round' %}<a href="/jobs/{{ e.body.job }}">{{ e.body.job }}</a> round {{ e.body.round }} · {{ e.body.updates|length }} updates · eval loss {{ e.body.eval_loss_milli / 1000 }} · acc {{ e.body.eval_acc_milli / 10 }} %{% else %}<a href="/jobs/{{ e.body.job }}">{{ e.body.job }}</a> {{ e.body.status or e.body.name }}{% endif %}</td>
+      <td><code>{{ e.hash[:16] }}…</code></td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">The ledger is empty until the first job is created.</p>{% endif %}
+{% endblock %}

@@ -1,0 +1,17 @@
+{% extends "base.html" %}{% block title %}Confirm a device{% endblock %}
+{% block content %}
+<section class="auth">
+  <h1>Confirm a device</h1>
+  <p>A command line asked to log in as <strong>{{ user.email }}</strong>. Enter the code it shows.</p>
+  {% if result %}
+    {% if result.ok %}<p class="ok" role="status">Done. The command line "{{ result.label }}" is logged in. You can close this page.</p>
+    {% else %}<p class="error" role="alert">{{ result.error }}</p>{% endif %}
+  {% endif %}
+  {% if not result or not result.ok %}
+  <form method="post" action="/device" class="stack">
+    <label>Code <input name="code" value="{{ code }}" required pattern="[A-Za-z0-9]{4}-?[A-Za-z0-9]{4}" autocomplete="one-time-code" class="code" autofocus></label>
+    <button type="submit">Confirm code</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

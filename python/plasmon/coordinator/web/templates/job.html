@@ -1,0 +1,14 @@
+{% extends "base.html" %}{% set active = 'jobs' %}{% block title %}{{ job.name }}{% endblock %}
+{% block content %}
+<div class="titlerow">
+  <h1>{{ job.name }} <span class="muted small">{{ job.id }}</span></h1>
+  {% if job.status == 'running' %}
+  <form method="post" action="/jobs/{{ job.id }}/cancel" onsubmit="return confirm('Cancel this job? Trainers stop at the end of the current round.')"><button type="submit" class="danger">Cancel job</button></form>
+  {% endif %}
+</div>
+<p class="muted">Submitted by {{ job.owner.email if job.owner else job.owner_id }} {{ job.created_at|ago }} ago · {{ job.spec.model.arch }} · {{ job.spec.recipe.inner_steps }} inner steps · top-k {{ job.spec.recipe.compression.topk }}</p>
+<div id="job" hx-get="/partials/jobs/{{ job.id }}" hx-trigger="{% if job.status == 'running' %}every 4s{% else %}none{% endif %}" hx-swap="innerHTML">
+  {% include "partials/job_live.html" %}
+</div>
+<p class="muted small">Download the latest weights: <code>plasmon job download {{ job.id }}</code></p>
+{% endblock %}

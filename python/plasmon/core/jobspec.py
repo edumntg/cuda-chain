@@ -94,7 +94,7 @@ class JobSpec(StrictModel):
 
 
 def load(path: str | Path) -> JobSpec:
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     return JobSpec.model_validate(data)
 

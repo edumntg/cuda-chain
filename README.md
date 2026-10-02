@@ -9,9 +9,11 @@ they verifiably contributed.
 electrons in a metal moving together as a single wave. plasmon is that for compute:
 thousands of GPUs, each on its own desk, training as one model.
 
-> **Status: design stage.** This document is the specification: what the network is,
-> how a training round works, what it is built on, and how it goes live. Implementation
-> starts with milestone M0 (§12). Nothing below is implemented yet unless marked.
+> **Status: working engine, early.** The coordinator, the trainer, the Python commands,
+> the dashboard and the native CLI run end to end on one machine or on a home network:
+> see [docs/QUICKSTART.md](docs/QUICKSTART.md) and [docs/HOME-LAB.md](docs/HOME-LAB.md).
+> The roadmap (§12) marks what is done. Everything else in this document is the
+> specification the implementation follows.
 
 ---
 
@@ -984,16 +986,20 @@ plasmon/
 
 ## 12. Roadmap
 
-- [ ] **M0 Scaffold.** Cargo workspace and `pyproject`; `plasmon-core` identity and signed
+- [x] **M0 Scaffold.** Cargo workspace and `pyproject`; `plasmon-core` identity and signed
       messages; blob client; compose stack; CI with the `hyperfine` start-up budget. CLI
       skeleton: `install.sh`, `--version` under 5 ms, start-up animation, `login` (device
       code), `whoami`, `--json`.
-- [ ] **M1 DiLoCo locally.** Inner/outer loop, SparseLoCo compression, binary Δ frames,
+- [x] **M1 DiLoCo locally.** Inner/outer loop, SparseLoCo compression, binary Δ frames,
       two in-process trainers reach single-GPU loss on a 10–30 M model. Traffic measured.
-- [ ] **M2 Coordinator.** Job spec, round state machine, deterministic assignment,
-      commit-reveal, aggregation, hash-chained ledger, join/leave mid-run. Accounts, roles
-      and API tokens. CLI `job`, `trainer`, `net` commands with live ratatui panels;
-      `plasmon daemon` warm connection; content-addressed dedupe on submit; heartbeats.
+- [x] **M2 Coordinator.** Job spec, round state machine, deterministic assignment,
+      commit-reveal, aggregation, hash-chained ledger, join/leave mid-round. Accounts,
+      roles and API tokens, device-code login. Trainer agent with heartbeats and
+      telemetry. Python commands (`server`, `login`, `job`, `trainer`, `fleet`,
+      `ledger`), the native CLI (`plasmon`, `job watch`, `fleet --watch`, intro
+      animation), content-addressed dedupe on submit, the first dashboard pages
+      (overview, jobs, job, my machine, fleet, server, ledger). Not yet: the warm
+      connection daemon, `net` commands.
 - [ ] **M3 Fleet and self-hosting.** `plasmon server init` Compose bundle with Caddy TLS, OIDC
       with group→role mapping, org policies (availability windows, caps, idle detection),
       `plasmon trainer enable` services for Linux, macOS and Windows, log shipping and live log

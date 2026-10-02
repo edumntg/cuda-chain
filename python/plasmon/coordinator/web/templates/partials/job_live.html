@@ -1,0 +1,36 @@
+{% import "_macros.html" as m %}
+<div class="jobhead">
+  <div><span class="jobstatus jobstatus-{{ job.status }}">{{ job.status }}</span> {% if job.status_detail %}<span class="muted">{{ job.status_detail }}</span>{% endif %}</div>
+  <dl class="kv inline">
+    <div><dt>round</dt><dd>{{ job.round_index }} / {{ job.total_rounds }}</dd></div>
+    <div><dt>eval loss</dt><dd>{{ job.last_eval_loss|f3 }}</dd></div>
+    <div><dt>eval acc</dt><dd>{{ job.last_eval_acc|pct }}</dd></div>
+    <div><dt>parameters</dt><dd>{{ job.param_count|num }}</dd></div>
+    <div><dt>shards</dt><dd>{{ job.shards|length }}</dd></div>
+  </dl>
+</div>
+<div class="chart" id="loss-chart" data-series='{{ series|tojson }}' role="img" aria-label="Evaluation loss and accuracy per round">
+  {% if not series.rounds %}<p class="empty">The chart appears after the first round closes.</p>{% endif %}
+</div>
+<h2>Rounds</h2>
+{% if rounds %}
+<table>
+  <thead><tr><th class="num">round</th><th>status</th><th class="num">trainers</th><th class="num">eval loss</th><th class="num">eval acc</th><th class="num">mean train loss</th><th class="num">bytes in</th><th>closed</th></tr></thead>
+  <tbody>
+  {% for r in rounds|reverse %}
+    <tr><td class="num">{{ r.index }}</td><td>{{ r.status }}</td><td class="num">{{ r.accepted }}</td><td class="num">{{ r.eval_loss|f3 }}</td><td class="num">{{ r.eval_acc|pct }}</td><td class="num">{{ r.mean_loss_end|f3 }}</td><td class="num">{{ r.bytes_in|bytes }}</td><td>{% if r.closed_at %}{{ r.closed_at|ago }} ago{% else %}deadline in {{ r.deadline_at|ago }}{% endif %}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+<h2>Trainers per round</h2>
+{% if updates %}
+<table>
+  <thead><tr><th class="num">round</th><th>machine</th><th class="num">shard</th><th>status</th><th class="num">samples</th><th class="num">loss start</th><th class="num">loss end</th><th class="num">bytes</th></tr></thead>
+  <tbody>
+  {% for u in updates %}
+    <tr><td class="num">{{ u.round_index }}</td><td>{% if show_names %}<a href="/machine/{{ u.machine.node_id }}">{{ u.machine.name }}</a>{% else %}{{ u.machine.node_id[:8] }}{% endif %}</td><td class="num">{{ u.shard_index }}</td><td>{{ u.status }}{% if u.reject_reason %} <span class="muted small">{{ u.reject_reason }}</span>{% endif %}</td><td class="num">{{ u.samples|num }}</td><td class="num">{{ u.loss_start|f3 }}</td><td class="num">{{ u.loss_end|f3 }}</td><td class="num">{{ u.frame_bytes|bytes }}</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% else %}<p class="empty">No trainer has taken a round yet. Machines join at the next heartbeat.</p>{% endif %}

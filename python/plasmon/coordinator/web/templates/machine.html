@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% set active = 'machine' %}{% block title %}{{ m.name }}{% endblock %}
+{% block content %}
+<h1>{{ m.name }} <span class="muted small">{{ m.node_id[:12] }}…</span></h1>
+<p class="muted">{{ m.hardware.os }} · {{ m.hardware.cpu_count }} CPUs · {{ m.hardware.ram_gb }} GB RAM · GPU {{ m.hardware.gpu.name if m.hardware.gpu and m.hardware.gpu.kind != 'none' else 'none' }}{% if m.hardware.gpu and m.hardware.gpu.vram_gb %} ({{ m.hardware.gpu.vram_gb }} GB){% endif %} · owner {{ m.user.email }} · plasmon {{ m.versions.plasmon }}</p>
+<div id="machine" hx-get="/partials/machine/{{ m.node_id }}" hx-trigger="every 4s" hx-swap="innerHTML">{% include "partials/machine_live.html" %}</div>
+{% endblock %}

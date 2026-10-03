@@ -69,6 +69,10 @@ def test_waiting_reason_and_busy_scope(server, dataset_dir, monkeypatch, tmp_pat
     assert assigned is not None and assigned["job_id"] == third["id"]
     assert owner.job(third["id"])["waiting_reason"] is None
 
+    # a heartbeat may carry fresh hardware: a GPU driver installed after enrolment shows up
+    machine.heartbeat({**idle, "status": "training", "job_id": third["id"], "round": 0, "hardware": {"os": "Windows 11", "gpu": {"kind": "cuda", "name": "NVIDIA GeForce RTX 4070", "vram_gb": 12}}})
+    assert owner.fleet()[0]["hardware"]["gpu"]["kind"] == "cuda"
+
     # the web pages show the same sentence: job page state card, overview job cards
     with httpx.Client(base_url=server, follow_redirects=False, timeout=30) as web:
         r = web.post("/login", data={"email": "why@example.com", "password": "why-password", "next": "/"})

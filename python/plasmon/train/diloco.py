@@ -135,4 +135,4 @@ def evaluate(arch: str, config: dict, theta: State, x: torch.Tensor, y: torch.Te
         logits = model(xb)
         total_loss += float(loss_fn(logits, yb))
         correct += int((logits.argmax(1) == yb).sum())
-    return total_loss / len(y), correct / len(y)
+    return total_loss / y.numel(), correct / y.numel()  # per element: an image, or a character of a text sequence

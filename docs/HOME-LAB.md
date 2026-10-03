@@ -151,7 +151,8 @@ py -c "import torch; print(torch.cuda.is_available())"
 ```
 
 The second line must print `True`. Without it the trainer prints a warning at start and
-uses the CPU. Open a new PowerShell window, then check:
+uses the CPU. If you install the CUDA build after the machine was enrolled, restart the
+trainer: it reports its hardware again at start, and the dashboard shows the GPU. Open a new PowerShell window, then check:
 
 ```powershell
 plasmon --version
@@ -322,6 +323,7 @@ the two runs on the **Jobs** page.
 | `Program 'powershell.exe' failed to run: Access is denied` | A second PowerShell was started from inside PowerShell, often in an elevated window | Run the `irm ... | iex` line directly, in a normal PowerShell window. |
 | The job stays at `waiting` and the machine shows `idle` | Nobody qualifies for the round | Open the job page or run `plasmon job status <id>`: the `waiting:` line says why, for example `1 free machine does not meet the job requirements: device cuda`. Check that the trainer logged in to the same server address that the dashboard shows. |
 | `plasmon fleet` shows `cpu` for a PC with an NVIDIA GPU, or the trainer warns `this PyTorch has no CUDA` | The default Windows wheel of PyTorch is CPU only | `py -m pip install torch --index-url https://download.pytorch.org/whl/cu126`, then restart the trainer. |
+| `cannot reach http://...: [WinError 10013] ... forbidden by its access permissions` | Windows Defender Firewall or an antivirus blocks network access for this `python.exe` | Open the dashboard address in the browser to confirm the server answers. Then Windows Security, Firewall, "Allow an app", add the Python of `py -c "import sys; print(sys.executable)"` for private networks, or add a rule: `New-NetFirewallRule -DisplayName plasmon-python -Direction Outbound -Program <path\\python.exe> -Action Allow`. The trainer retries every 10 s. |
 | `the plasmon Python package was not found` | The engine is not installed for the Python the CLI found | Run the `pip install` line again. Set `PLASMON_PYTHON` to the right interpreter if you have several. |
 | The browser says "didn't send any data" or `ERR_EMPTY_RESPONSE` on an address like `172.16.30.1` | That address is a VPN tunnel or a virtual machine adapter, not the Wi-Fi | On the Mac use `http://localhost:7117`. From the PC use the `en0` address (`ipconfig getifaddr en0`). With a corporate VPN, the PC may need the VPN off, or the Mac's Wi-Fi address published with `--public-url`. |
 | `cannot reach http://192.168.1.20:7117` on the PC | Firewall on the Mac, or a different network | On the Mac, System Settings, Network, Firewall: allow Python. Make sure both computers use the same Wi-Fi. |

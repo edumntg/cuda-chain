@@ -81,6 +81,7 @@ class HeartbeatIn(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     logs: list[dict[str, Any]] = Field(default_factory=list)  # [{at, level, message}]
     ready: bool = False  # asks for a round; idle heartbeats ask implicitly
+    hardware: dict[str, Any] | None = None  # sent once per trainer start; replaces what enrolment recorded
 
 
 @router.post("/heartbeat")
@@ -93,6 +94,8 @@ def heartbeat(body: HeartbeatIn, machine: db.Machine = Depends(current_machine),
     machine.current_job_id = body.job_id
     machine.current_round = body.round
     machine.metrics = body.metrics
+    if body.hardware:
+        machine.hardware = body.hardware
     session.add(db.Heartbeat(machine_id=machine.id, status=body.status, metrics=body.metrics))
     for line in body.logs[:200]:
         session.add(db.LogLine(machine_id=machine.id, at=_parse_at(line.get("at")), level=str(line.get("level", "info"))[:8], message=str(line.get("message", ""))[:4000]))

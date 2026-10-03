@@ -81,6 +81,7 @@ class Agent:
         # job: it reports `training` and asks for work, instead of flipping to idle after each round
         self.in_job: tuple[str, float, int] | None = None
         self.in_round = False
+        self.hardware_sent = False  # the first heartbeat of a run carries the current hardware
         self.job_id: str | None = None
         self.round: int | None = None
         self.step = 0
@@ -147,7 +148,10 @@ class Agent:
         metrics.update({"step": self.step, "steps_total": self.steps_total, "session_rounds": self.session_rounds, "session_samples": self.session_samples})
         with self._lock:
             body = {"status": self.state, "status_detail": self.detail, "job_id": self.job_id, "round": self.round, "metrics": metrics, "logs": self.buffer.drain(), "ready": ready}
+            if not self.hardware_sent:  # a GPU or a driver installed after enrolment shows up without re-enrolling
+                body["hardware"] = telemetry.hardware()
         reply = self.client.heartbeat(body)
+        self.hardware_sent = True
         job = reply.get("job")
         if isinstance(job, dict) and job.get("status") not in (None, "running") and self.in_job and self.in_job[0] == body["job_id"]:
             self.in_job = None  # the job ended: the loop goes idle at its next turn
@@ -275,7 +279,19 @@ class Agent:
     # ----- main loop ---------------------------------------------------------------
 
     def run(self) -> None:
-        self.enrol()
+        while True:
+            try:
+                self.enrol()
+                break
+            except ApiError:
+                raise  # a login or permission problem does not fix itself
+            except Exception as e:  # the server is down or the network blocks this process
+                hint = ""
+                if "10013" in str(e):
+                    hint = " (Windows refused the connection for this python.exe: allow it in Windows Defender Firewall or your antivirus)"
+                log.warning("cannot reach %s: %s%s; retrying in 10 s", self.server, _short(e), hint)
+                if self.stop_event.wait(10):
+                    return
         hb = threading.Thread(target=self._heartbeat_thread, name="plasmon-heartbeat", daemon=True)
         hb.start()
         log.info("trainer %s on %s, device %s", self.name, self.server, self.device)
@@ -334,6 +350,12 @@ class Agent:
 
     def stop(self) -> None:
         self.stop_event.set()
+
+
+def _short(e: BaseException) -> str:
+    """The message without the httpx chain: one line a person can act on."""
+    text = str(e).strip() or e.__class__.__name__
+    return text.splitlines()[0][:200]
 
 
 def _warn_if_cuda_missing() -> None:

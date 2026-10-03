@@ -1,0 +1,25 @@
+# A byte-level language model on the complete works of Shakespeare (1.1 MB of text). A
+# 4-layer transformer with 0.8M parameters: the same kind of model as a large language
+# model, a thousand times smaller. Download: 1.1 MB.
+name: shakespeare-charlm
+model:
+  arch: char_lm
+  config: {vocab: 128, block_size: 128, d_model: 128, layers: 4, heads: 4}
+dataset:
+  source: builtin://tinyshakespeare
+  block_size: 128       # characters per sequence; must equal model.config.block_size
+  shard_size: 256       # sequences per shard, 32,768 characters
+recipe:
+  algorithm: diloco
+  inner_steps: 40
+  batch_size: 16
+  inner_optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 0.1}
+  outer_optimizer: {name: nesterov, lr: 0.7, momentum: 0.9}
+  compression: {name: topk, topk: 0.1, error_feedback: true}
+requirements:
+  device: any
+  min_trainers: 1
+  max_trainers: 8
+  round_timeout_s: 900
+budget:
+  rounds: 40

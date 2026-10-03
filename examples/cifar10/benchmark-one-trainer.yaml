@@ -1,0 +1,22 @@
+# The same job as job.yaml, limited to one trainer. Pair with benchmark-two-trainers.yaml.
+name: cifar10-one
+model:
+  arch: cifar_cnn
+  config: {width: 32}
+dataset:
+  source: builtin://cifar10
+  shard_size: 2500
+recipe:
+  algorithm: diloco
+  inner_steps: 100
+  batch_size: 64
+  inner_optimizer: {name: adamw, lr: 1.0e-3, weight_decay: 0.05}
+  outer_optimizer: {name: nesterov, lr: 0.7, momentum: 0.9}
+  compression: {name: topk, topk: 0.1, error_feedback: true}
+requirements:
+  device: any
+  min_trainers: 1
+  max_trainers: 1
+  round_timeout_s: 900
+budget:
+  rounds: 30

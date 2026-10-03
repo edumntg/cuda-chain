@@ -307,6 +307,10 @@ Add `--hours "daily 22:00-07:00"` to train only at night. Remove the service wit
 Submit the same job again. The upload step prints `uploading 1 of 62 blobs`: the shards
 are already on the server, only the job record is new.
 
+For a job that takes minutes, `examples/cifar10/job.yaml` (colour images, 163 MB) or
+`examples/shakespeare/job.yaml` (a small language model, 1.1 MB); `examples/README.md`
+lists them and explains how to compare one trainer with two.
+
 Change `inner_steps` or `rounds` in `examples/mnist/job.yaml` and submit again to compare
 the two runs on the **Jobs** page.
 

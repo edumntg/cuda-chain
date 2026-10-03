@@ -83,7 +83,7 @@ Open a third terminal:
 ```bash
 git clone https://github.com/edumntg/plasmon.git
 cd plasmon
-plasmon job submit examples/mnist/job.yaml
+plasmon job submit examples/mnist/job.yaml      # or examples/cifar10/job.yaml, examples/shakespeare/job.yaml
 ```
 
 The command uploads the initial weights and the data shards, then prints the job id.

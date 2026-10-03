@@ -6,10 +6,16 @@ fetch only the shard assigned to them. The eval split stays with the coordinator
 Sources a job can name in `dataset.source`:
 
 - `builtin://mnist`, `builtin://fashion-mnist`: downloaded from public mirrors on first use.
-- an `https://` URL of a `.csv`, `.csv.gz` or `.npz` file: downloaded once and cached.
-- a local `.csv`, `.csv.gz` or `.npz` file.
+- `builtin://cifar10`: the CIFAR-10 python archive (163 MB), 32×32 colour images.
+- `builtin://tinyshakespeare`: 1.1 MB of Shakespeare as bytes, cut into sequences of
+  `dataset.block_size` characters for the `char_lm` architecture.
+- an `https://` URL of a `.csv`, `.csv.gz`, `.npz` or `.txt` file: downloaded once and cached.
+- a local `.csv`, `.csv.gz`, `.npz` or `.txt` file.
 - a local directory with the four IDX `.gz` files of MNIST or Fashion-MNIST, or with
   `.npz` shards.
+
+Image shards hold `x` as uint8 (N×28×28 grey or N×32×32×3 colour). Text shards hold `x` and
+`y` as int32 token ids of shape N×block_size (`y` is `x` shifted by one character).
 
 CSV layout: one row per image, the label in the first column (or the last, with
 `label_column: last`), then 784 pixel values from 0 to 255. A header row is skipped.
@@ -59,6 +65,10 @@ KNOWN_MD5 = {
         "t10k-labels-idx1-ubyte.gz": "bb300cfdad3c16e7a12a480ee83cd310",
     },
 }
+CIFAR10_URL = "https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz"
+CIFAR10_MD5 = "c58f30108f718f92721af3b95e74349a"
+TINYSHAKESPEARE_URL = "https://raw.githubusercontent.com/karpathy/char-rnn/master/data/tinyshakespeare/input.txt"
+TINYSHAKESPEARE_MD5 = "6fb458f1232090904fb40fe944165e91"
 IDX_ALIASES = {  # other common file names for the same four files
     "train-images-idx3-ubyte.gz": ("train-images.idx3-ubyte.gz", "train-images-idx3-ubyte"),
     "train-labels-idx1-ubyte.gz": ("train-labels.idx1-ubyte.gz", "train-labels-idx1-ubyte"),
@@ -178,6 +188,63 @@ def load_fashion_mnist(directory: Path | None = None) -> tuple[Shard, Shard]:
     return Shard(parts["train_x"], parts["train_y"]), Shard(parts["test_x"], parts["test_y"])
 
 
+def load_cifar10(directory: Path | None = None) -> tuple[Shard, Shard]:
+    """CIFAR-10 from the python archive: 50,000 training and 10,000 test images, N×32×32×3."""
+    import pickle
+    import tarfile
+
+    directory = directory or cache_dir() / "datasets" / "cifar10"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "cifar-10-python.tar.gz"
+    if not path.exists():
+        _download(CIFAR10_URL, path, CIFAR10_MD5)
+    batches: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+    with tarfile.open(path, "r:gz") as tar:
+        for member in tar.getmembers():
+            name = Path(member.name).name
+            if not (name.startswith("data_batch_") or name == "test_batch"):
+                continue
+            f = tar.extractfile(member)
+            if f is None:
+                continue
+            d = pickle.load(f, encoding="latin1")  # the archive is MD5-pinned above
+            x = np.asarray(d["data"], dtype=np.uint8).reshape(-1, 3, 32, 32).transpose(0, 2, 3, 1)
+            batches[name] = (x, np.asarray(d["labels"], dtype=np.uint8))
+    train_names = sorted(n for n in batches if n.startswith("data_batch_"))
+    if not train_names or "test_batch" not in batches:
+        raise ValueError(f"{path} does not look like the CIFAR-10 python archive")
+    train = Shard(np.concatenate([batches[n][0] for n in train_names]), np.concatenate([batches[n][1] for n in train_names]))
+    test = Shard(*batches["test_batch"])
+    return train, test
+
+
+def encode_text(text: bytes, block_size: int) -> Shard:
+    """Cut bytes into sequences of `block_size`; `y` is the next character at each position."""
+    tokens = np.frombuffer(text, dtype=np.uint8).astype(np.int32)
+    count = (len(tokens) - 1) // block_size
+    if count < 1:
+        raise ValueError(f"the text has {len(tokens)} characters, fewer than one sequence of {block_size + 1}")
+    x = np.stack([tokens[i * block_size : (i + 1) * block_size] for i in range(count)])
+    y = np.stack([tokens[i * block_size + 1 : (i + 1) * block_size + 1] for i in range(count)])
+    return Shard(x, y)
+
+
+def load_text(path: Path, block_size: int, eval_fraction: float) -> tuple[Shard, Shard]:
+    """A text file: the first part trains, the last `eval_fraction` of the characters evaluate."""
+    text = path.read_bytes()
+    cut = len(text) - int(len(text) * eval_fraction)
+    return encode_text(text[:cut], block_size), encode_text(text[cut:], block_size)
+
+
+def load_tinyshakespeare(block_size: int, eval_fraction: float = 0.1, directory: Path | None = None) -> tuple[Shard, Shard]:
+    directory = directory or cache_dir() / "datasets" / "tinyshakespeare"
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / "input.txt"
+    if not path.exists():
+        _download(TINYSHAKESPEARE_URL, path, TINYSHAKESPEARE_MD5)
+    return load_text(path, block_size, eval_fraction)
+
+
 def load_idx_dir(directory: Path) -> tuple[Shard, Shard]:
     """A directory with the four IDX files, downloaded by hand. Test files are optional."""
     directory = Path(directory)
@@ -243,14 +310,23 @@ def _load_file(path: Path, label_column: str, image_shape: tuple[int, int]) -> S
     raise ValueError(f"{path}: unknown file type; use .csv, .csv.gz or .npz")
 
 
-def load_source(source: str, eval_source: str | None = None, eval_fraction: float = 0.1, label_column: str = "first", image_shape: tuple[int, int] = (28, 28)) -> tuple[Shard, Shard]:
+def load_source(source: str, eval_source: str | None = None, eval_fraction: float = 0.1, label_column: str = "first", image_shape: tuple[int, int] = (28, 28), block_size: int = 128) -> tuple[Shard, Shard]:
     """Return (train, eval) for any supported `dataset.source`."""
     if source == "builtin://mnist":
         train, test = load_mnist()
     elif source == "builtin://fashion-mnist":
         train, test = load_fashion_mnist()
+    elif source == "builtin://cifar10":
+        train, test = load_cifar10()
+    elif source == "builtin://tinyshakespeare":
+        train, test = load_tinyshakespeare(block_size, eval_fraction)
     elif source.startswith("builtin://"):
-        raise ValueError(f"unknown builtin dataset {source}; use builtin://mnist or builtin://fashion-mnist")
+        raise ValueError(f"unknown builtin dataset {source}; use builtin://mnist, builtin://fashion-mnist, builtin://cifar10 or builtin://tinyshakespeare")
+    elif source.endswith(".txt") or (source.startswith(("http://", "https://")) and source.split("?")[0].endswith(".txt")):
+        path = fetch_url(source) if source.startswith(("http://", "https://")) else Path(source).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(f"dataset.source {source} does not exist")
+        train, test = load_text(path, block_size, eval_fraction)
     else:
         if source.startswith(("http://", "https://")):
             path = fetch_url(source)
@@ -290,12 +366,25 @@ def split_shards(data: Shard, shard_size: int, seed: int) -> list[Shard]:
     ]
 
 
+CIFAR_MEAN = (0.4914, 0.4822, 0.4465)
+CIFAR_STD = (0.2470, 0.2435, 0.2616)
+
+
 def to_tensors(shard: Shard):
+    """Model-ready tensors: grey images N×1×H×W, colour images N×3×H×W, text N×T token ids."""
     import torch
 
-    x = torch.from_numpy(np.array(shard.x, dtype=np.uint8)).float().div_(255.0)
-    x = (x - 0.1307) / 0.3081
-    if x.dim() == 3:
-        x = x.unsqueeze(1)
+    x_np = np.asarray(shard.x)
+    if x_np.dtype != np.uint8:  # token ids
+        x = torch.from_numpy(x_np.astype(np.int64))
+    else:
+        x = torch.from_numpy(np.array(x_np, dtype=np.uint8)).float().div_(255.0)
+        if x.dim() == 4:  # N×H×W×C colour
+            x = x.permute(0, 3, 1, 2).contiguous()
+            x = (x - torch.tensor(CIFAR_MEAN).view(1, 3, 1, 1)) / torch.tensor(CIFAR_STD).view(1, 3, 1, 1)
+        else:
+            x = (x - 0.1307) / 0.3081
+            if x.dim() == 3:
+                x = x.unsqueeze(1)
     y = torch.from_numpy(np.array(shard.y, dtype=np.int64))
     return x, y

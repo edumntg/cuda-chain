@@ -27,7 +27,7 @@ def prepare(spec: jobspec.JobSpec, progress: Callable[[str], None] = lambda s: N
     init_id = hashing.digest(init_bytes)
     blobs[init_id] = init_bytes
     progress(f"dataset: {spec.dataset.source}" + (" (downloading on first use)" if spec.dataset.source.startswith(("builtin://", "http")) else ""))
-    train, eval_shard = data.load_source(spec.dataset.source, spec.dataset.eval_source, spec.dataset.eval_fraction, spec.dataset.label_column, tuple(spec.dataset.image_shape))
+    train, eval_shard = data.load_source(spec.dataset.source, spec.dataset.eval_source, spec.dataset.eval_fraction, spec.dataset.label_column, tuple(spec.dataset.image_shape), spec.dataset.block_size)
     if len(eval_shard) > 2000:
         eval_shard = data.Shard(eval_shard.x[:2000], eval_shard.y[:2000])
     shards = data.split_shards(train, spec.dataset.shard_size, seed=spec.recipe.seed)

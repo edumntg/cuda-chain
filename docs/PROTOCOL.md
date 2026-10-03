@@ -43,6 +43,11 @@ index = u64_le(blake3(job_seed || u64_le(round) || node_id)[0:8]) mod num_shards
 - `job_seed` and `node_id` are UTF-8 strings.
 - `round` is a 64-bit little-endian integer.
 - The result is deterministic. Any party can recompute it.
+- The coordinator uses `index` as the start: if that shard is already assigned to another
+  trainer in the same round, it takes the next free one, `(index + k) mod num_shards`
+  for the smallest `k`. Two trainers in one round therefore train different shards; the
+  round's ledger entry records which shard each update used. Only when a round has more
+  trainers than the job has shards does a shard repeat.
 
 ## 5. Δ frame
 

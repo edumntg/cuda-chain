@@ -67,6 +67,9 @@ Dial: ENERGY 2 / RHYTHM 2 / MOTION 2.
   translucent borders behind them and a status pill that overlaps the bottom border; 1 px
   wires drawn as SVG paths measured from the DOM, with marching ants on the wires that
   carry data. Colours, icons and copy are plasmon's.
+- Every node has one fixed size (156 × 66 px; the coordinator 236 px wide) whatever its
+  status or content: the subtitle line and the footer slots are always present, with "–"
+  for a value that does not exist yet. A status change never moves a neighbour.
 - Wires follow a trunk-and-bus scheme so that no two colours share a segment: one trunk
   from the coordinator down to a horizontal bus, one drop per group, and for a group in a
   later row a corridor that hugs the boxes above or passes through a gap between them.

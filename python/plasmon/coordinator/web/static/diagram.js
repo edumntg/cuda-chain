@@ -419,7 +419,7 @@
       var st = stale ? "idle" : u.status === "assigned" ? "unavailable" : u.status === "committed" ? "paused" : (u.status === "revealed" || u.status === "accepted") ? "training" : "offline";
       var id = "u:" + u.node, href = u.node.length === 64 ? "/machine/" + u.node : null;
       var n = nodeEl(tn, id, href);
-      setNode(n, { status: st, icon: icons[u.node] || "pc", title: u.machine, sub: stale ? "round " + u.round + " done · shard " + u.shard : u.status + " · shard " + u.shard, href: href, footLeft: u.loss_end != null ? "loss " + fmt(u.loss_end, 3) : "", kv: u.score != null ? [["score", fmt(u.score, 3)]] : [], tooltip: u.reject_reason || u.status, ports: ["left", "right"] });
+      setNode(n, { status: st, icon: icons[u.node] || "pc", title: u.machine, sub: stale ? "round " + u.round + " done · shard " + u.shard : u.status + " · shard " + u.shard, href: href, footLeft: "loss " + fmt(u.loss_end, 3), kv: [["score", fmt(u.score, 3)]], tooltip: u.reject_reason || u.status, ports: ["left", "right"] });
       keepT[id] = true;
     });
     prune(tn, keepT);

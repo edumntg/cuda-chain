@@ -164,7 +164,7 @@ a.button.secondary { background: var(--paper-2); color: var(--ink); border: 1px 
 .ps-flow { position: relative; display: grid; grid-template-columns: max-content max-content max-content max-content; gap: 56px; align-items: center; justify-content: center; width: max-content; min-width: 100%; }
 .ps-col { display: flex; flex-direction: column; align-items: center; justify-content: center; }
 
-.ps-node { position: relative; z-index: 2; display: block; min-width: 120px; max-width: 156px; background: var(--paper); border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow); color: var(--ink); text-decoration: none; text-align: left; transition: border-color 150ms, box-shadow 150ms; }
+.ps-node { position: relative; z-index: 2; display: block; width: 156px; min-width: 156px; max-width: 156px; background: var(--paper); border: 1px solid var(--line); border-radius: 4px; box-shadow: var(--shadow); color: var(--ink); text-decoration: none; text-align: left; transition: border-color 150ms, box-shadow 150ms; }
 a.ps-node:hover { border-color: var(--ink-2); }
 .ps-node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .ps-node.ps-static { cursor: default; }
@@ -181,7 +181,8 @@ a.ps-node:hover { border-color: var(--ink-2); }
 .ps-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.4; }
 .ps-title-row { display: inline-flex; align-items: center; gap: 4px; }
 .ps-title { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ps-sub { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.ps-sub { color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 11px; min-height: 15px; }
+.ps-sub:empty::before, .ps-foot-l:empty::before { content: "\00a0"; }
 .ps-count { display: inline-flex; align-items: center; height: 14px; padding: 0 4px; border-radius: 999px; background: var(--line); font-size: 10.5px; font-weight: 500; }
 .ps-squares { display: flex; flex-wrap: wrap; gap: 3px; max-width: 76px; justify-content: flex-end; }
 .ps-square { width: 10px; height: 10px; border-radius: 2px; background: var(--paper-2); border: 1px solid var(--line); }
@@ -190,7 +191,7 @@ a.ps-node:hover { border-color: var(--ink-2); }
 .ps-square.status-paused { border-color: var(--st-paused); }
 .ps-square.status-offline { border-color: var(--st-offline); background: transparent; }
 .ps-square.status-error { background: var(--st-error); border-color: var(--st-error); }
-.ps-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 6px; overflow: hidden; white-space: nowrap; background: var(--paper-2); border-top: 1px solid var(--line); border-radius: 0 0 4px 4px; font-size: 11px; }
+.ps-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 6px; min-height: 21px; overflow: hidden; white-space: nowrap; background: var(--paper-2); border-top: 1px solid var(--line); border-radius: 0 0 4px 4px; font-size: 11px; }
 .mono, .ps-foot { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums; }
 .ps-foot-l { color: var(--ink); white-space: nowrap; }
 .ps-kvs { display: inline-flex; gap: 6px; }
@@ -210,7 +211,7 @@ a.ps-node:hover { border-color: var(--ink-2); }
 .ps-node.status-unavailable .ps-icon, .ps-node.status-unavailable .ps-title { color: var(--ink-2); }
 .ps-node.status-offline { border-style: dashed; } .ps-node.status-offline .ps-title, .ps-node.status-offline .ps-sub { color: var(--ink-2); } .ps-node.status-offline .ps-icon { color: var(--st-offline); }
 .ps-node.status-error { border-color: var(--st-error); } .ps-node.status-error .ps-icon { background: var(--st-error); color: #fff; }
-.ps-router { min-width: 236px; }
+.ps-router { width: 236px; min-width: 236px; max-width: 236px; }
 .ps-router .ps-port::after { display: none; }
 .ps-router .ps-port-bottom { background: var(--ink-2); }
 .ps-router.status-error .ps-head { border-bottom-color: var(--st-error); }

@@ -188,6 +188,20 @@ class Engine:
             return None
         taken, job, rnd, spec, previous = min(candidates, key=lambda c: c[0])
         shard_index = assignment.shard_index(job.seed, rnd.index, machine.node_id, len(job.shards))
+        # Two trainers must not train the same data in one round: from the hashed start, take the
+        # first shard nobody holds in this round. With more trainers than shards, shards repeat.
+        in_use = set(
+            session.scalars(
+                select(db.Update.shard_index).where(
+                    db.Update.job_id == job.id, db.Update.round_index == rnd.index, db.Update.status.in_(("assigned", "committed", "revealed"))
+                )
+            ).all()
+        )
+        for step in range(len(job.shards)):
+            candidate = (shard_index + step) % len(job.shards)
+            if candidate not in in_use:
+                shard_index = candidate
+                break
         shard = job.shards[shard_index]
         if previous is not None:  # the row is unique per (job, round, machine): reuse it
             previous.status = "assigned"

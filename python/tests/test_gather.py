@@ -53,3 +53,7 @@ budget: {{rounds: 3}}
     assert final["status"] == "completed", final
     closed = [r for r in final["rounds"] if r["status"] == "closed"]
     assert len(closed) == 3 and all(r["accepted"] == 2 for r in closed), [(r["index"], r["accepted"]) for r in closed]
+    # the two trainers of a round never train the same shard
+    for r in closed:
+        shards = [u["shard"] for u in owner.job_updates(job["id"], round=r["index"]) if u["status"] == "accepted"]
+        assert len(shards) == 2 and shards[0] != shards[1], shards
